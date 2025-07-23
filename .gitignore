@@ -1,0 +1,13 @@
+# Dependency directories
+node_modules/
+
+# Next.js build folder
+frontend/.next/
+
+# Log files
+npm-debug.log*
+yarn-error.log
+*.log
+
+# Environment variables
+.env

@@ -1,0 +1,17 @@
+{
+  "name": "qrypscan-indexer",
+  "version": "1.0.0",
+  "description": "Real-time listener and historical indexer for Besu blockchain",
+  "main": "src/main.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.js",
+    "listen": "node src/listener.js",
+    "index": "node src/indexer.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.0",
+    "ethers": "^6.14.4",
+    "pg": "^8.16.2"
+  }
+}
