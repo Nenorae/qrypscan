@@ -1,10 +1,10 @@
 import Head from "next/head";
-import client from "../../lib/api"; // Sesuaikan path jika berbeda
+import client from "../../lib/api";
 import { gql } from "@apollo/client";
-import Link from 'next/link';
+import Link from "next/link";
+import { useState, useEffect } from "react"; // ✅ DI-IMPORT: useState dan useEffect
 
 // 1. Definisikan query GraphQL dengan variabel
-// Perhatikan bagaimana kita juga meminta field 'transactions' di dalam query blok
 const GET_BLOCK_DETAILS = gql`
   query GetBlockByNumber($number: Int!) {
     blockByNumber(number: $number) {
@@ -29,8 +29,19 @@ const GET_BLOCK_DETAILS = gql`
 `;
 
 // 2. Komponen Halaman React
-// Menerima 'block' sebagai props dari getServerSideProps
 export default function BlockDetailsPage({ block }) {
+  // ✅ BARU: State untuk menampung waktu yang akan ditampilkan dengan aman
+  const [displayTime, setDisplayTime] = useState("Memuat...");
+
+  // ✅ BARU: useEffect untuk memformat waktu di sisi client
+  useEffect(() => {
+    if (block && block.timestamp) {
+      // Ingat: * 1000 dihilangkan karena timestamp sudah dalam milidetik
+      const clientTime = new Date(parseInt(block.timestamp)).toLocaleString("id-ID");
+      setDisplayTime(clientTime);
+    }
+  }, [block]); // Efek ini berjalan setiap kali data 'block' berubah
+
   // Fungsi untuk memotong hash
   const truncateHash = (hash) => (hash ? `${hash.substring(0, 10)}...${hash.substring(hash.length - 10)}` : "N/A");
 
@@ -53,7 +64,8 @@ export default function BlockDetailsPage({ block }) {
   return (
     <div className="font-sans p-4 md:p-8 max-w-7xl mx-auto bg-gray-50 text-gray-900 min-h-screen dark:bg-gray-900 dark:text-gray-100">
       <Head>
-        <title>Blok #{block.number} - QrypScan</title>
+        {/* ✅ DIUBAH: Menggunakan template literal agar judul menjadi satu string utuh */}
+        <title>{`Blok #${block.number} - QrypScan`}</title>
       </Head>
 
       <header className="mb-8 pb-4 border-b border-gray-200 dark:border-gray-700">
@@ -73,7 +85,8 @@ export default function BlockDetailsPage({ block }) {
             <strong>Parent Hash:</strong>
             <span className="font-mono break-all">{block.parentHash}</span>
             <strong>Timestamp:</strong>
-            <span>{new Date(parseInt(block.timestamp) * 1000).toLocaleString("id-ID")}</span>
+            {/* ✅ DIUBAH: Menampilkan state 'displayTime' yang aman */}
+            <span>{displayTime}</span>
             <strong>Validator:</strong>
             <span className="font-mono break-all">{block.miner}</span>
             <strong>Gas Used:</strong>
@@ -95,11 +108,21 @@ export default function BlockDetailsPage({ block }) {
               <table className="w-full text-sm text-left text-gray-500 dark:text-gray-300">
                 <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-gray-700 dark:text-gray-200">
                   <tr>
-                    <th scope="col" className="px-6 py-3">#</th>
-                    <th scope="col" className="px-6 py-3">Hash Transaksi</th>
-                    <th scope="col" className="px-6 py-3">Dari</th>
-                    <th scope="col" className="px-6 py-3">Ke</th>
-                    <th scope="col" className="px-6 py-3">Value (wei)</th>
+                    <th scope="col" className="px-6 py-3">
+                      #
+                    </th>
+                    <th scope="col" className="px-6 py-3">
+                      Hash Transaksi
+                    </th>
+                    <th scope="col" className="px-6 py-3">
+                      Dari
+                    </th>
+                    <th scope="col" className="px-6 py-3">
+                      Ke
+                    </th>
+                    <th scope="col" className="px-6 py-3">
+                      Value (wei)
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -107,9 +130,7 @@ export default function BlockDetailsPage({ block }) {
                     <tr key={tx.hash} className="bg-white border-b border-gray-200 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:hover:bg-gray-700">
                       <td className="px-6 py-4 text-gray-700 dark:text-gray-300">{tx.transactionIndex}</td>
                       <td className="px-6 py-4 font-mono text-blue-600 hover:underline dark:text-blue-400">
-                        <Link href={`/tx/${tx.hash}`}>
-                          {truncateHash(tx.hash)}
-                        </Link>
+                        <Link href={`/tx/${tx.hash}`}>{truncateHash(tx.hash)}</Link>
                       </td>
                       <td className="px-6 py-4 font-mono text-blue-600 hover:underline dark:text-blue-400">{truncateHash(tx.fromAddress)}</td>
                       <td className="px-6 py-4 font-mono text-blue-600 hover:underline dark:text-blue-400">{truncateHash(tx.toAddress)}</td>
@@ -129,7 +150,6 @@ export default function BlockDetailsPage({ block }) {
 }
 
 // 3. Fungsi Server-Side Data Fetching
-// Fungsi ini akan berjalan di server setiap kali ada permintaan ke halaman ini
 export async function getServerSideProps(context) {
   try {
     const { blockNumber } = context.params;
@@ -146,11 +166,7 @@ export async function getServerSideProps(context) {
       },
     };
   } catch (error) {
-    // --- PERBAIKAN UTAMA DI SINI ---
-    // Cetak detail error yang lengkap ke konsol server frontend
-    console.error("--- ERROR DETAIL DARI APOLLO/GRAPHQL ---");
-    console.error(JSON.stringify(error, null, 2));
-    console.error("-------------------------------------------");
+    console.error("Error fetching block details:", JSON.stringify(error, null, 2));
 
     return {
       props: {
