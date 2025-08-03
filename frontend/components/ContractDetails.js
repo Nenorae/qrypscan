@@ -251,7 +251,7 @@ function VerificationInstructions({ address }) {
 ...
 networks: {
   besu: {
-    url: 'http://localhost:8545', // URL RPC Node Anda
+    url: 'http://100.92.191.4:8545', // URL RPC Node Anda
   },
 },
 etherscan: {
@@ -263,8 +263,8 @@ etherscan: {
       network: 'besu',
       chainId: 1337, // Sesuaikan dengan chainId jaringan Anda
       urls: {
-        apiURL: 'http://localhost:4000/api', // URL API verifikasi QrypScan Anda
-        browserURL: 'http://localhost:3000', // URL frontend QrypScan Anda
+        apiURL: 'http://100.92.191.4:4000/api', // URL API verifikasi QrypScan Anda
+        browserURL: 'http://100.92.191.4:3000', // URL frontend QrypScan Anda
       },
     },
   ],

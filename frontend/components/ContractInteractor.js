@@ -114,7 +114,7 @@ export default function ContractInteractor({ abi, address, type }) {
 
     useEffect(() => {
         const setupContract = async () => {
-            const provider = new ethers.JsonRpcProvider('http://localhost:8545'); // Read-only provider
+            const provider = new ethers.JsonRpcProvider('http://100.92.191.4:8545'); // Read-only provider
             const contractInstance = new ethers.Contract(address, abi, provider);
             setContract(contractInstance);
         };
