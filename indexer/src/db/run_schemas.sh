@@ -10,7 +10,7 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Database connection details (replace with your actual details or use environment variables)
 export PGPASSWORD=${DB_PASSWORD:-your_password} # Fallback to a default if not set
 DB_USER=${DB_USER:-postgres}
-DB_HOST=${DB_HOST:-localhost}
+DB_HOST=${DB_HOST:-100.92.191.4}
 DB_PORT=${DB_PORT:-5432}
 DB_NAME=${DB_DATABASE:-qrypscan_dev}
 

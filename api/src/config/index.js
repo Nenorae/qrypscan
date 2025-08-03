@@ -15,7 +15,7 @@ dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 // [PERBAIKAN] Membangun connection string dari variabel DB_*
 const dbUser = process.env.DB_USER;
 const dbPassword = process.env.DB_PASSWORD;
-const dbHost = process.env.DB_HOST;
+const dbHost = process.env.DB_HOST || "100.92.191.4";
 const dbPort = process.env.DB_PORT;
 const dbDatabase = process.env.DB_DATABASE;
 
