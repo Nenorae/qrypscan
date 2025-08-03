@@ -4,7 +4,7 @@ import { gql } from "@apollo/client";
 import Head from "next/head";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { useState } from "react";
+import { useState, useEffect } from "react"; // 👈 PASTIKAN useEffect DI-IMPORT
 import client from "../lib/api";
 
 // Query GraphQL untuk mengambil data blok per halaman
@@ -26,6 +26,23 @@ const GET_BLOCKS_PAGINATED = gql`
 // Helper untuk memotong hash
 const truncateHash = (hash) => (hash ? `${hash.substring(0, 10)}...${hash.substring(hash.length - 10)}` : "N/A");
 
+// ✅ BARU: Komponen terpisah untuk menangani waktu agar aman dari hydration error
+function TimestampCell({ timestamp }) {
+  const [displayTime, setDisplayTime] = useState("..."); // Placeholder awal
+
+  useEffect(() => {
+    // useEffect hanya berjalan di client, jadi aman dari perbedaan timezone
+    const clientTime = new Date(parseInt(timestamp)).toLocaleString("id-ID", {
+      year: 'numeric', month: 'numeric', day: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+    setDisplayTime(clientTime);
+  }, [timestamp]); // Bergantung pada nilai timestamp
+
+  return <td className="p-3 border border-gray-300 text-gray-700 dark:border-gray-700 dark:text-gray-300">{displayTime}</td>;
+}
+
+
 export default function AllBlocksPage({ initialData }) {
   const router = useRouter();
   const [searchBlock, setSearchBlock] = useState("");
@@ -43,7 +60,8 @@ export default function AllBlocksPage({ initialData }) {
   return (
     <div className="font-sans p-4 md:p-8 max-w-7xl mx-auto bg-gray-50 text-gray-900 min-h-screen dark:bg-gray-900 dark:text-gray-100">
       <Head>
-        <title>Semua Blok - Halaman {currentPage}</title>
+        {/* ✅ DIUBAH: Menggunakan template literal untuk judul agar menjadi satu string */}
+        <title>{`Semua Blok - Halaman ${currentPage}`}</title>
       </Head>
 
       <header className="mb-8">
@@ -94,7 +112,10 @@ export default function AllBlocksPage({ initialData }) {
                 <td className="p-3 border border-gray-300 font-mono text-gray-700 dark:border-gray-700 dark:text-gray-300">{truncateHash(block.hash)}</td>
                 <td className="p-3 border border-gray-300 font-mono text-gray-700 dark:border-gray-700 dark:text-gray-300">{truncateHash(block.miner)}</td>
                 <td className="p-3 border border-gray-300 text-center text-gray-700 dark:border-gray-700 dark:text-gray-300">{block.transactionCount}</td>
-                <td className="p-3 border border-gray-300 text-gray-700 dark:border-gray-700 dark:text-gray-300">{new Date(parseInt(block.timestamp) * 1000).toLocaleString("id-ID")}</td>
+                
+                {/* ✅ DIUBAH: Menggunakan komponen TimestampCell yang baru */}
+                <TimestampCell timestamp={block.timestamp} />
+
               </tr>
             ))}
           </tbody>
@@ -132,7 +153,6 @@ export async function getServerSideProps(context) {
     const { data } = await client.query({
       query: GET_BLOCKS_PAGINATED,
       variables: { page, limit },
-      // Penting: 'network-only' agar tidak menggunakan cache saat berpindah halaman
       fetchPolicy: "network-only",
     });
 

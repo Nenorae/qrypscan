@@ -25,13 +25,13 @@ echo ""
 
 # 1. Menghentikan dan menghapus container & volume
 echo "=== [1/5] Menghentikan dan Menghapus Container & Volume Lama... ==="
-docker-compose --env-file ${ENV_FILE} down -v
+docker compose --env-file ${ENV_FILE} down -v
 echo "✅ Selesai."
 echo ""
 
 # 2. Membuat ulang container database
 echo "=== [2/5] Membuat Ulang Container Database... ==="
-docker-compose --env-file ${ENV_FILE} up -d db
+docker compose --env-file ${ENV_FILE} up -d db
 echo "✅ Selesai."
 echo ""
 
@@ -54,7 +54,7 @@ if [ -z "${DB_PASSWORD}" ]; then
     exit 1
 fi
 # Menggunakan variabel yang sudah di-source
-docker-compose --env-file ${ENV_FILE} exec -T db psql -v ON_ERROR_STOP=1 -U "${DB_USER}" -d postgres -c "ALTER USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';"
+docker compose --env-file ${ENV_FILE} exec -T db psql -v ON_ERROR_STOP=1 -U "${DB_USER}" -d postgres -c "ALTER USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';"
 echo "✅ Password berhasil diatur/disinkronkan."
 echo ""
 
