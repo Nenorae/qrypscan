@@ -142,6 +142,9 @@ export function UnverifiedInfo({ contract }) {
                 </p>
             </div>
 
+            {/* Menampilkan banner jika terdeteksi sebagai proxy, bahkan jika belum terverifikasi */}
+            <ProxyInfoBanner implementationAddress={contract.implementationAddress} />
+
             <div className="flex border-b border-gray-200 dark:border-gray-700">
                 <button onClick={() => setActiveTab('verify')} className={`px-4 py-2 text-sm font-medium ${activeTab === 'verify' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500'}`}>
                     Verify Contract

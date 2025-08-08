@@ -11,6 +11,7 @@ const GET_CONTRACTS = gql`
       contractName
       creationTxHash
       isVerified
+      isProxy # 1. Ambil field isProxy
     }
   }
 `;
@@ -50,6 +51,12 @@ export default function ContractsPage({ contracts }) {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                   {contract.contractName || '-'}
+                  {/* 2. Tampilkan lencana jika isProxy true */}
+                  {contract.isProxy && (
+                    <span className="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100">
+                      PROXY
+                    </span>
+                  )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-blue-600 dark:text-blue-400">
                   <Link href={`/tx/${contract.creationTxHash}`}>{contract.creationTxHash.substring(0, 12)}...</Link>
