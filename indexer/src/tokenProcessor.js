@@ -9,27 +9,36 @@ import { saveTokenInfo, saveTokenTransfer } from "./db/queries.js";
 const TRANSFER_EVENT_TOPIC = ethers.id("Transfer(address,address,uint256)");
 const erc20Interface = new ethers.Interface(erc20Abi);
 
-export async function processTransactionLog(log, blockTimestamp, provider) {
-  // Cek apakah log ini adalah event Transfer ERC-20
-  if (log.topics[0] !== TRANSFER_EVENT_TOPIC || log.topics.length !== 3) {
+/**
+ * Processes a log entry to check if it's a token transfer event.
+ * If it is, it saves the token info (if new) and the transfer details.
+ * Can use an existing DB client or create a new one.
+ * @param {object} log - The log object from the provider.
+ * @param {number} blockTimestamp - The timestamp of the block containing the log.
+ * @param {object} provider - The Ethers provider instance.
+ * @param {object} [existingClient=null] - An optional existing database client for transactions.
+ */
+export async function processTransactionLog(log, blockTimestamp, provider, existingClient = null) {
+  // Check if this is a standard ERC20/ERC721 Transfer event
+  if (log.topics[0] !== TRANSFER_EVENT_TOPIC || log.topics.length < 3) {
     return;
   }
 
-  const pool = getDbPool();
-  const client = await pool.connect();
+  const client = existingClient || await getDbPool().connect();
   let tokenDetails = {};
 
   try {
     const contractAddress = log.address;
-    console.log(`... 🪙 Ditemukan event Transfer ERC-20 di kontrak: ${contractAddress}`);
+    console.log(`... 🪙 Ditemukan event Transfer di kontrak: ${contractAddress}`);
 
-    // Cek apakah kita sudah punya info token ini di DB
+    // If not using an existing client, we manage our own transaction.
+    if (!existingClient) await client.query("BEGIN");
+
     const tokenInfoResult = await client.query("SELECT * FROM tokens WHERE contract_address = $1", [contractAddress]);
 
     if (tokenInfoResult.rowCount > 0) {
       tokenDetails = tokenInfoResult.rows[0];
     } else {
-      // Jika belum ada, ambil metadata dari blockchain
       console.log(`... ℹ️ Mengambil metadata token baru...`);
       const contract = new ethers.Contract(contractAddress, erc20Abi, provider);
       try {
@@ -46,26 +55,22 @@ export async function processTransactionLog(log, blockTimestamp, provider) {
           symbol,
           decimals: Number(decimals),
           totalSupply,
-          tokenType: "ERC20",
+          tokenType: "ERC20", // Default to ERC20, can be refined later
         };
-
-        // Simpan metadata ke DB
         await saveTokenInfo(client, tokenDetails);
       } catch (e) {
-        console.warn(`... ⚠️ Kontrak ${contractAddress} terlihat seperti ERC20 tapi gagal mengambil metadata. Error: ${e.message}`);
-        return; // Lanjut ke log berikutnya jika bukan ERC20 standar
+        console.warn(`... ⚠️ Kontrak ${contractAddress} mungkin bukan ERC20 standar. Error: ${e.message}`);
+        // We can still proceed to save the transfer without full metadata
       }
     }
 
-    // Parsing data dari log
     const parsedLog = erc20Interface.parseLog(log);
     if (!parsedLog) {
       console.warn(`... ⚠️ Gagal mem-parsing log untuk tx: ${log.transactionHash}`);
-      return; // Tidak bisa parse log, lanjut
+      return;
     }
     const { from, to, value } = parsedLog.args;
 
-    // Simpan data transfer ke DB
     const transferData = {
       transactionHash: log.transactionHash,
       logIndex: log.index,
@@ -75,13 +80,19 @@ export async function processTransactionLog(log, blockTimestamp, provider) {
       from,
       to,
       value,
+      tokenId: log.topics.length === 4 ? BigInt(log.topics[3]).toString() : null,
     };
     await saveTokenTransfer(client, transferData);
 
-    console.log(`... ✅ Transfer dari ${from} ke ${to} senilai ${ethers.formatUnits(value, tokenDetails.decimals || 18)} ${tokenDetails.symbol || ""} berhasil dicatat.`);
+    console.log(`... ✅ Transfer di ${tokenDetails.symbol || contractAddress} berhasil dicatat.`);
+
+    if (!existingClient) await client.query("COMMIT");
+
   } catch (error) {
+    if (!existingClient) await client.query("ROLLBACK");
     console.error(`... 🔥 Gagal memproses log transfer token:`, error);
+    if (existingClient) throw error;
   } finally {
-    client.release();
+    if (!existingClient) client.release();
   }
 }

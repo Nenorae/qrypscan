@@ -1,10 +1,10 @@
 // File: indexer/src/indexer.js
 
 import { ethers } from "ethers";
-import { getLatestBlockNumber, saveContract } from "./db/queries.js";
+import { getLatestBlockNumber, saveContract, processBlock } from "./db/queries.js";
 import { getDbPool } from "./db/connect.js";
-import { processBlock } from "./db/queries.js"; // Ganti saveBlockAndTransactions dengan processBlock
-import { processTransactionLog } from "./tokenProcessor.js"; // Import fungsi untuk memproses logs transaksi
+import { processTransactionLog } from "./tokenProcessor.js";
+import { processProxyUpgradeLog } from "./proxyProcessor.js"; // Import proxy processor
 
 import dotenv from "dotenv";
 import path from "path";
@@ -19,14 +19,10 @@ dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 async function startIndexer() {
   console.log("--- Memulai Historical Indexer ---");
 
-  // Menggunakan provider HTTP untuk tugas batch ini
   const provider = new ethers.JsonRpcProvider(process.env.BESU_HTTP_URL);
-
-  // 1. Cek blok terakhir di database kita
   const lastIndexedBlock = await getLatestBlockNumber();
   console.log(`Blok terakhir di database: #${lastIndexedBlock}`);
 
-  // 2. Cek blok terbaru di jaringan blockchain
   const latestBlockOnChain = await provider.getBlockNumber();
   console.log(`Blok terbaru di jaringan: #${latestBlockOnChain}`);
 
@@ -39,34 +35,36 @@ async function startIndexer() {
 
   console.log(`Memulai indexing dari blok #${startBlock} hingga #${latestBlockOnChain}...`);
 
-  // 3. Loop dari blok yang hilang hingga blok terbaru
   for (let blockNumber = startBlock; blockNumber <= latestBlockOnChain; blockNumber++) {
     try {
-      // Memberi log progres agar kita tahu prosesnya berjalan
       const progress = (((blockNumber - startBlock + 1) / (latestBlockOnChain - startBlock + 1)) * 100).toFixed(2);
       console.log(`[${progress}%] Mengambil blok #${blockNumber}...`);
 
-      const blockWithTxs = await provider.getBlock(blockNumber, true); // `true` untuk ambil transaksi
+      const blockWithTxs = await provider.getBlock(blockNumber, true);
 
       if (blockWithTxs) {
         const pool = getDbPool();
         const client = await pool.connect();
         try {
           await client.query("BEGIN");
+
+          // 1. Process block and base transactions
           await processBlock(client, blockWithTxs);
 
+          // 2. Process receipts and all logs
           for (const tx of blockWithTxs.prefetchedTransactions) {
             const receipt = await provider.getTransactionReceipt(tx.hash);
             if (receipt) {
-              // Cek jika ini adalah transaksi pembuatan kontrak
+              // Check for contract creation
               if (tx.to === null && receipt.contractAddress) {
                 await saveContract(client, receipt, tx, blockWithTxs.timestamp);
               }
 
-              // Proses logs untuk token transfers
+              // Process logs for token transfers and proxy upgrades
               if (receipt.logs) {
                 for (const log of receipt.logs) {
-                  await processTransactionLog(log, blockWithTxs.timestamp, provider);
+                  await processTransactionLog(log, blockWithTxs.timestamp, provider, client);
+                  await processProxyUpgradeLog(log, client);
                 }
               }
             }
@@ -83,7 +81,6 @@ async function startIndexer() {
       }
     } catch (error) {
       console.error(`🔥 Gagal memproses blok #${blockNumber}:`, error.message);
-      // Anda bisa memilih untuk berhenti atau lanjut. Untuk saat ini, kita biarkan lanjut.
     }
   }
 
@@ -93,7 +90,6 @@ async function startIndexer() {
 // Menjalankan fungsi utama dan menutup pool database setelah selesai
 startIndexer()
   .then(() => {
-    // Menutup semua koneksi di pool agar skrip bisa berhenti dengan bersih
     getDbPool().end(() => {
       console.log("Connection pool ditutup.");
     });

@@ -66,6 +66,7 @@ export default function ContractPage({ contract, address }) {
             </main>
         </div>
     );
+
 }
 
 export async function getServerSideProps(context) {

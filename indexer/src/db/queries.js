@@ -288,3 +288,27 @@ export async function batchProcessTokenTransfers(transfers) {
     client.release();
   }
 }
+
+// ======================== PROXY FUNCTIONS ========================
+export async function updateProxyImplementation(client, proxyAddress, implementationAddress) {
+  try {
+    // This query will either insert a new record for the proxy if it doesn't exist,
+    // or update the implementation address if it already exists.
+    // It sets `is_verified` to FALSE because we only know it's a proxy;
+    // the implementation itself needs separate verification.
+    const query = `
+      INSERT INTO verified_contracts (address, implementation_address, contract_name, compiler_version, is_verified, verified_at)
+      VALUES ($1, $2, 'Proxy Contract', 'unknown', FALSE, CURRENT_TIMESTAMP)
+      ON CONFLICT (address) DO UPDATE
+      SET implementation_address = $2,
+          updated_at = CURRENT_TIMESTAMP;
+    `;
+    const values = [proxyAddress, implementationAddress];
+    await client.query(query, values);
+    console.log(`✅ Proxy ${proxyAddress} implementation updated to ${implementationAddress}.`);
+    return true;
+  } catch (error) {
+    console.error(`❌ Gagal memperbarui implementasi proxy ${proxyAddress}:`, error);
+    throw error;
+  }
+}

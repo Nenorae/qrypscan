@@ -1,9 +1,10 @@
-// File: indexer/src/listener.js (Versi Perbaikan)
+// File: indexer/src/listener.js
 
 import { ethers } from "ethers";
-import { getDbPool } from "./db/connect.js"; // <-- Tambahkan import ini
+import { getDbPool } from "./db/connect.js";
 import { processBlock, saveContract } from "./db/queries.js";
 import { processTransactionLog } from "./tokenProcessor.js";
+import { processProxyUpgradeLog } from "./proxyProcessor.js"; // Import proxy processor
 
 export async function startListener() {
   const BESU_WS_URL = process.env.BESU_WS_URL;
@@ -17,7 +18,6 @@ export async function startListener() {
 
   console.log("🥣 Mangkuk siap! Mendengarkan blok baru...");
 
-  // Mendengarkan blok baru yang diterima dari node
   provider.on("block", async (blockNumber) => {
     try {
       console.log(`📦 Blok baru terdeteksi! Nomor: ${blockNumber}`);
@@ -29,28 +29,34 @@ export async function startListener() {
         const client = await pool.connect();
         try {
           await client.query("BEGIN");
+
+          // 1. Process the block and its base transactions
           await processBlock(client, blockWithTxs);
 
+          // 2. Process receipts and logs for each transaction
           for (const tx of blockWithTxs.prefetchedTransactions) {
             const receipt = await provider.getTransactionReceipt(tx.hash);
             if (receipt) {
-              // Cek jika ini adalah transaksi pembuatan kontrak
+              // Check for contract creation
               if (tx.to === null && receipt.contractAddress) {
                 await saveContract(client, receipt, tx, blockWithTxs.timestamp);
               }
 
-              // Proses logs untuk token transfers
+              // Process all logs for token transfers and proxy upgrades
               if (receipt.logs) {
                 for (const log of receipt.logs) {
-                  await processTransactionLog(log, blockWithTxs.timestamp, provider);
+                  // Pass the DB client to ensure all log processing is in the same transaction
+                  await processTransactionLog(log, blockWithTxs.timestamp, provider, client);
+                  await processProxyUpgradeLog(log, client);
                 }
               }
             }
           }
+
           await client.query("COMMIT");
         } catch (e) {
           await client.query("ROLLBACK");
-          throw e;
+          throw e; // Re-throw the error to be caught by the outer catch block
         } finally {
           client.release();
         }
@@ -62,7 +68,6 @@ export async function startListener() {
     }
   });
 
-  // Menambahkan listener untuk error koneksi WebSocket jika diperlukan
   provider.websocket.on("error", (error) => {
     console.error("WebSocket Error:", error);
   });
