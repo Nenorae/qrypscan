@@ -30,7 +30,7 @@ const config = {
   node: {
     // Gunakan BESU_HTTP_URL sebagai rpcUrl, atau fallback ke RPC_URL jika tidak ada.
     // Pastikan BESU_HTTP_URL diatur ke URL HTTP, bukan WS.
-    rpcUrl: process.env.BESU_HTTP_URL || process.env.RPC_URL || 'http://100.92.191.4:8545',
+    rpcUrl: process.env.BESU_HTTP_URL || process.env.RPC_URL || 'http://100.92.191.4:8556',
   },
 };
 
