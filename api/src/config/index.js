@@ -34,4 +34,16 @@ const config = {
   },
 };
 
+// [DEBUG] Menampilkan konfigurasi yang digunakan
+console.log("--- ⚙️  API Configuration Loaded ---");
+console.log(`[API] Port: ${config.port}`);
+console.log(`[DB] Host: ${dbHost}`);
+console.log(`[DB] Port: ${dbPort}`);
+console.log(`[DB] User: ${dbUser}`);
+console.log(`[DB] Database: ${dbDatabase}`);
+// Jangan menampilkan password di log
+console.log(`[NODE] RPC URL: ${config.node.rpcUrl}`);
+console.log("------------------------------------");
+
+
 export default config;
