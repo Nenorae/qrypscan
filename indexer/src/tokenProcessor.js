@@ -3,7 +3,7 @@
 import { ethers } from "ethers";
 import { erc20Abi } from "./utils/erc20Abi.js";
 import { getDbPool } from "./db/connect.js";
-import { saveTokenInfo, saveTokenTransfer, getTokenInfo } from "./db/queries.js";
+import { saveTokenInfo, saveTokenTransfer } from "./db/queries.js";
 
 // Event signatures untuk berbagai token standards
 export const TOKEN_EVENT_SIGNATURES = {

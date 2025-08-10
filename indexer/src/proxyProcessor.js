@@ -2,7 +2,7 @@
 
 import { ethers } from "ethers";
 import { getDbPool } from "./db/connect.js";
-import { updateProxyImplementation, getProxyInfo } from "./db/queries.js";
+import { updateProxyImplementation } from "./db/queries.js";
 
 // Event signatures for various proxy patterns
 export const PROXY_EVENT_SIGNATURES = {
