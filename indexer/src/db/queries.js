@@ -1,5 +1,6 @@
 // File: indexer/src/db/queries.js
 import { getDbPool } from "./connect.js";
+import { checkProxyStatus } from "../proxyProcessor.js";
 
 // ======================== BLOCK FUNCTIONS ========================
 export async function saveBlock(client, block) {
@@ -114,27 +115,53 @@ export async function updateTransactionReceipt(client, receipt) {
 }
 
 // ======================== CONTRACT FUNCTIONS ========================
-export async function saveContract(client, receipt, tx, blockTimestamp) {
+export async function saveContract(client, receipt, tx, blockTimestamp, provider) {
   try {
     const blockTimestampISO = new Date(blockTimestamp * 1000).toISOString();
-    const query = `
+    const contractAddress = receipt.contractAddress;
+
+    // Insert the basic contract information first
+    const insertQuery = `
       INSERT INTO contracts (
         address, creator_address, creation_tx_hash, block_number, block_timestamp
       )
       VALUES ($1, $2, $3, $4, $5)
       ON CONFLICT (address) DO NOTHING;
     `;
-
-    const values = [
-      receipt.contractAddress,
+    const insertValues = [
+      contractAddress,
       tx.from,
-      tx.hash, // PERBAIKAN: Menggunakan tx.hash yang sudah pasti ada
+      tx.hash,
       receipt.blockNumber,
       blockTimestampISO,
     ];
+    const insertResult = await client.query(insertQuery, insertValues);
 
-    await client.query(query, values);
-    console.log(`✅ Kontrak baru ${receipt.contractAddress} disimpan.`);
+    // Only proceed if a new row was actually inserted
+    if (insertResult.rowCount > 0) {
+      console.log(`✅ Kontrak baru ${contractAddress} disimpan.`);
+
+      // Now, check if it's a proxy
+      const proxyStatus = await checkProxyStatus(contractAddress, provider);
+
+      if (proxyStatus.is_proxy) {
+        console.log(`🔍 Kontrak ${contractAddress} terdeteksi sebagai proxy. Memperbarui...`);
+        const updateQuery = `
+          UPDATE contracts
+          SET is_proxy = $1, implementation_address = $2, admin_address = $3
+          WHERE address = $4;
+        `;
+        const updateValues = [
+          proxyStatus.is_proxy,
+          proxyStatus.implementation_address,
+          proxyStatus.admin_address,
+          contractAddress,
+        ];
+        await client.query(updateQuery, updateValues);
+        console.log(`✅ Info proxy untuk ${contractAddress} diperbarui.`);
+      }
+    }
+
     return true;
   } catch (error) {
     console.error(`❌ Gagal menyimpan kontrak ${receipt.contractAddress}:`, error);
@@ -175,12 +202,12 @@ export async function saveTokenInfo(client, tokenData) {
 // ======================== TOKEN TRANSFER FUNCTIONS ========================
 export async function saveTokenTransfer(client, transferData) {
   try {
-    const blockTimestampISO = new Date(transferData.blockTimestamp * 1000).toISOString();
+    const blockTimestampISO = new Date(transferData.block_timestamp).toISOString();
 
     const query = `
       INSERT INTO token_transfers (
         tx_hash, log_index, block_number, block_timestamp,
-        contract_address, from_address, to_address, value_raw, token_id
+        contract_address, from_address, to_address, value, token_id
       )
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       ON CONFLICT (tx_hash, log_index, block_timestamp) DO NOTHING;
@@ -188,18 +215,18 @@ export async function saveTokenTransfer(client, transferData) {
 
     const values = [
       transferData.tx_hash,
-      transferData.logIndex,
-      transferData.blockNumber,
+      transferData.log_index,
+      transferData.block_number,
       blockTimestampISO,
-      transferData.contractAddress,
-      transferData.from,
-      transferData.to,
-      transferData.value.toString(),
-      transferData.tokenId || null,
+      transferData.contract_address,
+      transferData.from_address,
+      transferData.to_address,
+      transferData.value, // Can be null for ERC721
+      transferData.token_id, // Can be null for ERC20
     ];
 
     await client.query(query, values);
-    console.log(`✅ Transfer token (tx: ${transferData.tx_hash}, log: ${transferData.logIndex}) disimpan.`);
+    // console.log(`✅ Transfer token (tx: ${transferData.tx_hash}, log: ${transferData.log_index}) disimpan.`);
     return true;
   } catch (error) {
     console.error(`❌ Gagal menyimpan transfer token ${transferData.tx_hash}:`, error);
@@ -290,25 +317,83 @@ export async function batchProcessTokenTransfers(transfers) {
 }
 
 // ======================== PROXY FUNCTIONS ========================
-export async function updateProxyImplementation(client, proxyAddress, implementationAddress) {
+
+/**
+ * Updates the implementation address for a proxy contract in the `contracts` table.
+ * This is the single source of truth for the current implementation.
+ */
+export async function updateContractProxyImplementation(client, proxyAddress, implementationAddress) {
   try {
-    // This query will either insert a new record for the proxy if it doesn't exist,
-    // or update the implementation address if it already exists.
-    // It sets `is_verified` to FALSE because we only know it's a proxy;
-    // the implementation itself needs separate verification.
     const query = `
-      INSERT INTO verified_contracts (address, implementation_address, contract_name, compiler_version, is_verified, verified_at)
-      VALUES ($1, $2, 'Proxy Contract', 'unknown', FALSE, CURRENT_TIMESTAMP)
-      ON CONFLICT (address) DO UPDATE
-      SET implementation_address = $2,
-          updated_at = CURRENT_TIMESTAMP;
+      UPDATE contracts
+      SET implementation_address = $2, is_proxy = TRUE
+      WHERE address = $1;
     `;
-    const values = [proxyAddress, implementationAddress];
-    await client.query(query, values);
-    console.log(`✅ Proxy ${proxyAddress} implementation updated to ${implementationAddress}.`);
+    await client.query(query, [proxyAddress, implementationAddress]);
+    console.log(`✅ Implementasi proxy ${proxyAddress} diperbarui ke ${implementationAddress} di tabel 'contracts'.`);
     return true;
   } catch (error) {
-    console.error(`❌ Gagal memperbarui implementasi proxy ${proxyAddress}:`, error);
+    console.error(`❌ Gagal memperbarui implementasi proxy ${proxyAddress} di tabel 'contracts':`, error);
+    throw error;
+  }
+}
+
+
+/**
+ * Records a historic proxy upgrade event in the `proxy_upgrades` table.
+ */
+export async function recordProxyUpgrade(client, { proxyAddress, implementationAddress, proxyType, txHash, blockNumber, blockTimestamp }) {
+  try {
+    const query = `
+      INSERT INTO proxy_upgrades (proxy_address, implementation_address, proxy_type, tx_hash, block_number, block_timestamp)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (proxy_address, tx_hash, implementation_address) DO NOTHING;
+    `;
+    const values = [proxyAddress, implementationAddress, proxyType, txHash, blockNumber, blockTimestamp];
+    await client.query(query, values);
+    console.log(`✅ Upgrade proxy ${proxyAddress} ke ${implementationAddress} dicatat.`);
+    return true;
+  } catch (error) {
+    console.error(`❌ Gagal mencatat upgrade proxy ${proxyAddress}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Stores the details of a Diamond Proxy's facet cut in the `diamond_facets` table.
+ */
+export async function storeDiamondCut(client, { proxyAddress, facetAddress, action, functionSelectors, txHash, blockNumber, blockTimestamp }) {
+  try {
+    const query = `
+      INSERT INTO diamond_facets (proxy_address, facet_address, action, function_selectors, tx_hash, block_number, block_timestamp)
+      VALUES ($1, $2, $3, $4, $5, $6, $7);
+    `;
+    const values = [proxyAddress, facetAddress, action, functionSelectors, txHash, blockNumber, blockTimestamp];
+    await client.query(query, values);
+    console.log(`✅ Diamond cut untuk proxy ${proxyAddress} (facet: ${facetAddress}) disimpan.`);
+    return true;
+  } catch (error) {
+    console.error(`❌ Gagal menyimpan diamond cut untuk proxy ${proxyAddress}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Updates the beacon address for a beacon proxy in the `beacon_proxies` table.
+ */
+export async function updateBeaconProxyInfo(client, proxyAddress, beaconAddress) {
+  try {
+    const query = `
+      INSERT INTO beacon_proxies (proxy_address, beacon_address, updated_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (proxy_address) DO UPDATE
+      SET beacon_address = $2, updated_at = NOW();
+    `;
+    await client.query(query, [proxyAddress, beaconAddress]);
+    console.log(`✅ Beacon untuk proxy ${proxyAddress} diperbarui ke ${beaconAddress}.`);
+    return true;
+  } catch (error) {
+    console.error(`❌ Gagal memperbarui beacon untuk proxy ${proxyAddress}:`, error);
     throw error;
   }
 }

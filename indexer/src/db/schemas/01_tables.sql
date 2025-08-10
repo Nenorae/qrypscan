@@ -61,6 +61,9 @@ CREATE TABLE IF NOT EXISTS contracts (
     creation_tx_hash TEXT UNIQUE NOT NULL, -- FK to transactions is removed due to TimescaleDB constraints.
     block_number BIGINT NOT NULL,
     block_timestamp TIMESTAMPTZ,
+    is_proxy BOOLEAN DEFAULT FALSE,
+    implementation_address TEXT,
+    admin_address TEXT,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -108,7 +111,7 @@ CREATE TABLE IF NOT EXISTS tokens (
 );
 
 -- Token Transfers Table: Logs all token movement events.
--- The `id` column is removed in favor of a natural primary key that includes the partitioning key.
+-- This table is optimized for all token standards (ERC20, ERC721, ERC1155).
 CREATE TABLE IF NOT EXISTS token_transfers (
     tx_hash TEXT NOT NULL,
     block_number BIGINT NOT NULL,
@@ -117,13 +120,50 @@ CREATE TABLE IF NOT EXISTS token_transfers (
     contract_address TEXT NOT NULL,
     from_address TEXT NOT NULL,
     to_address TEXT NOT NULL,
-    amount NUMERIC(78, 0), -- For ERC20
-    token_id NUMERIC(78, 0),   -- For ERC721
-    value_raw TEXT, -- Raw value for flexibility
+    -- For ERC20/ERC1155, this is the amount of tokens. For ERC721, this can be NULL.
+    value NUMERIC(78, 0),
+    -- For ERC721/ERC1155, this is the ID of the token. For ERC20, this is NULL.
+    token_id NUMERIC(78, 0),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (tx_hash, log_index, block_timestamp)
 );
 
-\echo '✅ Core tables created successfully.'
+-- === Proxy Tracking Data ===
+
+-- Proxy Upgrades Table: Logs every implementation upgrade event for any proxy type.
+CREATE TABLE IF NOT EXISTS proxy_upgrades (
+    id SERIAL PRIMARY KEY,
+    proxy_address TEXT NOT NULL,
+    implementation_address TEXT NOT NULL,
+    proxy_type TEXT NOT NULL, -- e.g., 'Upgradeable', 'Beacon'
+    tx_hash TEXT NOT NULL,
+    block_number BIGINT NOT NULL,
+    block_timestamp TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(proxy_address, tx_hash, implementation_address)
+);
+
+-- Diamond Facets Table: Stores facet changes for Diamond proxies (EIP-2535).
+CREATE TABLE IF NOT EXISTS diamond_facets (
+    id SERIAL PRIMARY KEY,
+    proxy_address TEXT NOT NULL,
+    facet_address TEXT NOT NULL,
+    action INT NOT NULL, -- 0: Add, 1: Replace, 2: Remove
+    function_selectors TEXT[] NOT NULL,
+    tx_hash TEXT NOT NULL,
+    block_number BIGINT NOT NULL,
+    block_timestamp TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Beacon Proxies Table: Tracks the beacon contract for beacon proxies.
+CREATE TABLE IF NOT EXISTS beacon_proxies (
+    proxy_address TEXT PRIMARY KEY,
+    beacon_address TEXT NOT NULL,
+    updated_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+\echo '✅ Core tables and proxy tracking tables created successfully.'
 
 COMMIT;

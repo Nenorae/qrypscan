@@ -39,7 +39,7 @@ export async function startListener() {
             if (receipt) {
               // Check for contract creation
               if (tx.to === null && receipt.contractAddress) {
-                await saveContract(client, receipt, tx, blockWithTxs.timestamp);
+                await saveContract(client, receipt, tx, blockWithTxs.timestamp, provider);
               }
 
               // Process all logs for token transfers and proxy upgrades
