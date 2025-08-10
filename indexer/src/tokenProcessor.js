@@ -104,7 +104,7 @@ export async function processTransactionLog(log, blockTimestamp, provider, exist
       }
 
       // Check if we already processed this log
-      const existingRecord = await client.query("SELECT 1 FROM token_transfers WHERE transaction_hash = $1 AND log_index = $2 LIMIT 1", [log.transactionHash, log.logIndex || 0]);
+      const existingRecord = await client.query("SELECT 1 FROM token_transfers WHERE tx_hash = $1 AND log_index = $2 LIMIT 1", [log.transactionHash, log.logIndex || 0]);
 
       if (existingRecord.rowCount > 0) {
         console.log(`⏭️  [TOKEN-SKIP] Log ${logId} already processed, skipping`);
@@ -375,7 +375,7 @@ async function processERC20Transfer(log, blockTimestamp, tokenInfo, client, logI
     console.log(`    Type: ${transferType}`);
 
     const transferData = {
-      transaction_hash: log.transactionHash,
+      tx_hash: log.transactionHash,
       log_index: log.logIndex || 0,
       block_number: log.blockNumber,
       block_timestamp: new Date(blockTimestamp * 1000),
@@ -443,7 +443,7 @@ async function processERC721Transfer(log, blockTimestamp, tokenInfo, client, log
     }
 
     const transferData = {
-      transaction_hash: log.transactionHash,
+      tx_hash: log.transactionHash,
       log_index: log.logIndex || 0,
       block_number: log.blockNumber,
       block_timestamp: new Date(blockTimestamp * 1000),
@@ -518,7 +518,7 @@ async function processERC1155Transfer(log, blockTimestamp, tokenInfo, client, lo
         console.log(`    Token ${i + 1}: ID=${tokenId}, Value=${value}`);
 
         const transferData = {
-          transaction_hash: log.transactionHash,
+          tx_hash: log.transactionHash,
           log_index: log.logIndex || 0,
           batch_index: i,
           block_number: log.blockNumber,
@@ -561,7 +561,7 @@ async function processERC1155Transfer(log, blockTimestamp, tokenInfo, client, lo
       const transferType = getTransferType(from, to);
 
       const transferData = {
-        transaction_hash: log.transactionHash,
+        tx_hash: log.transactionHash,
         log_index: log.logIndex || 0,
         block_number: log.blockNumber,
         block_timestamp: new Date(blockTimestamp * 1000),

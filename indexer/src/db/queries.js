@@ -187,7 +187,7 @@ export async function saveTokenTransfer(client, transferData) {
     `;
 
     const values = [
-      transferData.transactionHash,
+      transferData.tx_hash,
       transferData.logIndex,
       transferData.blockNumber,
       blockTimestampISO,
@@ -199,10 +199,10 @@ export async function saveTokenTransfer(client, transferData) {
     ];
 
     await client.query(query, values);
-    console.log(`✅ Transfer token (tx: ${transferData.transactionHash}, log: ${transferData.logIndex}) disimpan.`);
+    console.log(`✅ Transfer token (tx: ${transferData.tx_hash}, log: ${transferData.logIndex}) disimpan.`);
     return true;
   } catch (error) {
-    console.error(`❌ Gagal menyimpan transfer token ${transferData.transactionHash}:`, error);
+    console.error(`❌ Gagal menyimpan transfer token ${transferData.tx_hash}:`, error);
     throw error;
   }
 }
