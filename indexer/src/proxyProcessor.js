@@ -75,7 +75,7 @@ export async function processProxyUpgradeLog(log, existingClient = null, options
       }
 
       // Check if we already processed this log
-      const existingRecord = await client.query("SELECT id FROM proxy_upgrades WHERE transaction_hash = $1 AND log_index = $2", [log.transactionHash, log.logIndex || 0]);
+      const existingRecord = await client.query("SELECT 1 FROM proxy_upgrades WHERE transaction_hash = $1 AND log_index = $2 LIMIT 1", [log.transactionHash, log.logIndex || 0]);
 
       if (existingRecord.rowCount > 0) {
         console.log(`⏭️  [PROXY-SKIP] Log ${logId} already processed, skipping`);

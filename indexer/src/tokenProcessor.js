@@ -104,7 +104,7 @@ export async function processTransactionLog(log, blockTimestamp, provider, exist
       }
 
       // Check if we already processed this log
-      const existingRecord = await client.query("SELECT id FROM token_transfers WHERE transaction_hash = $1 AND log_index = $2", [log.transactionHash, log.logIndex || 0]);
+      const existingRecord = await client.query("SELECT 1 FROM token_transfers WHERE transaction_hash = $1 AND log_index = $2 LIMIT 1", [log.transactionHash, log.logIndex || 0]);
 
       if (existingRecord.rowCount > 0) {
         console.log(`⏭️  [TOKEN-SKIP] Log ${logId} already processed, skipping`);
