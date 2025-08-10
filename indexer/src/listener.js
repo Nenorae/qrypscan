@@ -2,7 +2,7 @@
 
 import { ethers } from "ethers";
 import { getDbPool } from "./db/connect.js";
-import { processBlock, saveContract } from "./db/queries.js";
+import { processBlock, saveContract } from "./db/queries/index.js";
 import { processTransactionLog } from "./tokenProcessor.js";
 import { processProxyUpgradeLog } from "./proxyProcessor.js"; // Import proxy processor
 
@@ -47,7 +47,7 @@ export async function startListener() {
                 for (const log of receipt.logs) {
                   // Pass the DB client to ensure all log processing is in the same transaction
                   await processTransactionLog(log, blockWithTxs.timestamp, provider, client);
-                  await processProxyUpgradeLog(log, client);
+                  await processProxyUpgradeLog(log, blockWithTxs.timestamp, provider, client);
                 }
               }
             }

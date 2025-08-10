@@ -7,7 +7,7 @@ import {
   recordProxyUpgrade,
   storeDiamondCut,
   updateBeaconProxyInfo
-} from "../db/queries.js";
+} from "../db/queries/index.js";
 import { IMPLEMENTATION_SLOT, ADMIN_SLOT, PROXY_EVENT_SIGNATURES, proxyInterfaces } from "./proxyConstants.js";
 import { processingStats } from "./proxyStats.js";
 

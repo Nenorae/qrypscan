@@ -2,7 +2,7 @@
 
 import { ethers } from "ethers";
 import { erc20Abi } from "../utils/erc20Abi.js";
-import { saveTokenInfo } from "../db/queries.js";
+import { saveTokenInfo } from "../db/queries/index.js";
 import { tokenMetadataCache, CACHE_TTL } from "./tokenCache.js";
 import { processingStats } from "./tokenStats.js";
 import { tokenInterfaces } from "./tokenConstants.js";
@@ -45,7 +45,7 @@ export async function getOrFetchTokenMetadata(contractAddress, provider, client,
 
     if (tokenInfo) {
       // Save to database
-      await saveTokenInfo(client, tokenInfo);
+      await saveTokenInfo(client, contractAddress, tokenInfo);
       processingStats.newTokensDiscovered++;
 
       // Cache the result

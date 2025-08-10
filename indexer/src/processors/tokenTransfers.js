@@ -1,7 +1,7 @@
 // File: indexer/src/processors/tokenTransfers.js
 
 import { ethers } from "ethers";
-import { saveTokenTransfer } from "../db/queries.js";
+import { saveTokenTransfer } from "../db/queries/index.js";
 import { tokenInterfaces, TOKEN_EVENT_SIGNATURES } from "./tokenConstants.js";
 import { getTransferType } from "./tokenUtils.js";
 

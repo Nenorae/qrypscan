@@ -1,7 +1,7 @@
 // File: indexer/src/indexer.js
 
 import { ethers } from "ethers";
-import { getLatestBlockNumber, saveContract, processBlock } from "./db/queries.js";
+import { getLatestBlockNumber, saveContract, processBlock } from "./db/queries/index.js";
 import { getDbPool } from "./db/connect.js";
 import { processTransactionLog } from "./tokenProcessor.js";
 import { processProxyUpgradeLog } from "./proxyProcessor.js"; // Import proxy processor
@@ -64,7 +64,7 @@ async function startIndexer() {
               if (receipt.logs) {
                 for (const log of receipt.logs) {
                   await processTransactionLog(log, blockWithTxs.timestamp, provider, client);
-                  await processProxyUpgradeLog(log, client);
+                  await processProxyUpgradeLog(log, blockWithTxs.timestamp, provider, client);
                 }
               }
             }
