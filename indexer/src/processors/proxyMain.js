@@ -22,8 +22,8 @@ const beaconAbi = ["function implementation() view returns (address)"];
  */
 export async function checkProxyStatus(address, provider) {
   try {
-    const implementationHex = await provider.getStorageAt(address, IMPLEMENTATION_SLOT);
-    const adminHex = await provider.getStorageAt(address, ADMIN_SLOT);
+    const implementationHex = await provider.getStorage(address, IMPLEMENTATION_SLOT);
+    const adminHex = await provider.getStorage(address, ADMIN_SLOT);
 
     const implementationAddress = ethers.isHexString(implementationHex) && implementationHex.length > 42
         ? ethers.getAddress(ethers.dataSlice(implementationHex, 12))
