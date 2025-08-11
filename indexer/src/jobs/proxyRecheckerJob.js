@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 import { getDbPool } from '../db/connect.js';
-import { checkProxyStatus } from '../processors/proxyMain.js';
+import { detectProxyContract } from '../processors/proxyDetection.js';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -18,18 +18,24 @@ const CRON_INTERVAL_MS = process.env.PROXY_RECHECK_INTERVAL_MS || 10 * 60 * 1000
  * @returns {Promise<Array>} A list of proxy contracts.
  */
 async function getProxies(client) {
-  const res = await client.query('SELECT address, implementation_address FROM contracts WHERE is_proxy = TRUE');
+  const res = await client.query('SELECT address, implementation_address, admin_address, proxy_type FROM contracts WHERE is_proxy = TRUE');
   return res.rows;
 }
 
 /**
- * Updates the implementation address for a given proxy contract.
+ * Updates the proxy details for a given proxy contract.
  * @param {object} client - The database client.
  * @param {string} address - The proxy contract address.
- * @param {string} newImplementationAddress - The new implementation address.
+ * @param {object} proxyStatus - The new proxy status from detection.
  */
-async function updateImplementation(client, address, newImplementationAddress) {
-  await client.query('UPDATE contracts SET implementation_address = $1 WHERE address = $2', [newImplementationAddress, address]);
+async function updateProxyDetails(client, address, proxyStatus) {
+  const query = `
+    UPDATE contracts 
+    SET implementation_address = $1, admin_address = $2, proxy_type = $3
+    WHERE address = $4
+  `;
+  const values = [proxyStatus.implementation, proxyStatus.admin, proxyStatus.proxyType, address];
+  await client.query(query, values);
 }
 
 /**
@@ -48,17 +54,26 @@ async function recheckProxies() {
 
     for (const proxy of proxies) {
       try {
-        const currentStatus = await checkProxyStatus(proxy.address, provider);
+        const currentStatus = await detectProxyContract(proxy.address, provider);
 
-        if (currentStatus.is_proxy && currentStatus.implementation_address && currentStatus.implementation_address !== proxy.implementation_address) {
+        // Check if the implementation has changed
+        if (currentStatus.isProxy && currentStatus.implementation && currentStatus.implementation !== proxy.implementation_address) {
           console.log(`⬆️  Upgrade terdeteksi untuk proxy ${proxy.address}!`);
-          console.log(`    Alamat lama: ${proxy.implementation_address}`);
-          console.log(`    Alamat baru: ${currentStatus.implementation_address}`);
+          console.log(`    Alamat implementasi lama: ${proxy.implementation_address}`);
+          console.log(`    Alamat implementasi baru: ${currentStatus.implementation}`);
+          console.log(`    Jenis proxy: ${currentStatus.proxyType}`);
 
-          await updateImplementation(client, proxy.address, currentStatus.implementation_address);
+          await updateProxyDetails(client, proxy.address, currentStatus);
           // Optional: Log this upgrade to a separate `proxy_upgrades` table for history
           console.log(`✅ Implementasi untuk ${proxy.address} telah diperbarui.`);
+        } else if (currentStatus.isProxy && currentStatus.admin !== proxy.admin_address) {
+            console.log(`🔄 Perubahan admin terdeteksi untuk proxy ${proxy.address}`);
+            console.log(`    Admin lama: ${proxy.admin_address}`);
+            console.log(`    Admin baru: ${currentStatus.admin}`);
+            await updateProxyDetails(client, proxy.address, currentStatus);
+            console.log(`✅ Admin untuk ${proxy.address} telah diperbarui.`);
         }
+
       } catch (e) {
         console.error(`🔥 Gagal memeriksa ulang proxy ${proxy.address}:`, e.message);
       }

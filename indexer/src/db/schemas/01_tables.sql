@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS contracts (
     block_number BIGINT NOT NULL,
     block_timestamp TIMESTAMPTZ,
     is_proxy BOOLEAN DEFAULT FALSE,
+    proxy_type TEXT, -- e.g., 'EIP-1967', 'EIP-1167', 'Beacon'
     implementation_address TEXT,
     admin_address TEXT,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP

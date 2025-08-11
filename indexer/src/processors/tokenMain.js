@@ -1,7 +1,6 @@
 // File: indexer/src/processors/tokenMain.js
 
 import { getDbPool } from "../db/connect.js";
-import { checkProxyStatus } from "../proxyProcessor.js";
 import { getOrFetchTokenMetadata } from "./tokenMetadata.js";
 import { processingStats } from "./tokenStats.js";
 import { TOKEN_EVENT_SIGNATURES, tokenInterfaces } from "./tokenConstants.js";
@@ -151,25 +150,6 @@ export async function processTransactionLog(log, blockTimestamp, provider, exist
   }
 }
 
-/**
- * Detect if contract might be a proxy by checking for proxy patterns
- */
-export async function detectProxyPattern(contractAddress, provider) {
-  console.log(`🔍 [TOKEN-PROXY] Checking proxy patterns for ${contractAddress}`);
-  const proxyStatus = await checkProxyStatus(contractAddress, provider);
-  if (proxyStatus.is_proxy) {
-    console.log(`✅ [TOKEN-PROXY] Detected EIP-1967 proxy pattern in ${contractAddress}`);
-    return {
-        isProxy: true,
-        proxyType: "eip1967",
-        implementation: proxyStatus.implementation_address,
-        confidence: "high",
-    };
-  }
-
-  console.log(`ℹ️  [TOKEN-PROXY] No EIP-1967 proxy patterns detected for ${contractAddress}`);
-  return { isProxy: false, reason: "no_patterns_found" };
-}
 
 /**
  * Process approval events (for better DeFi tracking)

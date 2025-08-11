@@ -14,42 +14,6 @@ import { processingStats } from "./proxyStats.js";
 // Minimal ABI to get implementation from a beacon contract
 const beaconAbi = ["function implementation() view returns (address)"];
 
-/**
- * Checks if a contract at a given address is a proxy by checking EIP-1967 storage slots.
- * @param {string} address The contract address to check.
- * @param {ethers.Provider} provider The ethers provider to use for the RPC call.
- * @returns {Promise<object>} An object with proxy status details.
- */
-export async function checkProxyStatus(address, provider) {
-  try {
-    const implementationHex = await provider.getStorage(address, IMPLEMENTATION_SLOT);
-    const adminHex = await provider.getStorage(address, ADMIN_SLOT);
-
-    const implementationAddress = ethers.isHexString(implementationHex) && implementationHex.length > 42
-        ? ethers.getAddress(ethers.dataSlice(implementationHex, 12))
-        : null;
-
-    const adminAddress = ethers.isHexString(adminHex) && adminHex.length > 42
-        ? ethers.getAddress(ethers.dataSlice(adminHex, 12))
-        : null;
-
-    const isProxy = implementationAddress !== null && implementationAddress !== ethers.ZeroAddress;
-
-    return {
-      is_proxy: isProxy,
-      implementation_address: implementationAddress,
-      admin_address: adminAddress,
-    };
-  } catch (error) {
-    console.error(`💥 [PROXY-CHECK] Error checking proxy status for ${address}:`, error.message);
-    return {
-      is_proxy: false,
-      implementation_address: null,
-      admin_address: null,
-      error: error.message,
-    };
-  }
-}
 
 /**
  * Enhanced proxy upgrade log processor with comprehensive debugging and multiple proxy pattern support

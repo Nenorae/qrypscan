@@ -1,5 +1,5 @@
 // File: indexer/src/db/queries/contract.js
-import { checkProxyStatus } from "../../proxyProcessor.js";
+import { detectProxyContract } from "../../processors/proxyDetection.js";
 
 // ======================== CONTRACT FUNCTIONS ========================
 export async function saveContract(client, receipt, tx, blockTimestamp, provider) {
@@ -22,17 +22,25 @@ export async function saveContract(client, receipt, tx, blockTimestamp, provider
     if (insertResult.rowCount > 0) {
       console.log(`✅ Kontrak baru ${contractAddress} disimpan.`);
 
-      // Now, check if it's a proxy
-      const proxyStatus = await checkProxyStatus(contractAddress, provider);
+      // Now, check if it's a proxy using the new advanced detection
+      const proxyStatus = await detectProxyContract(contractAddress, provider);
 
-      if (proxyStatus.is_proxy) {
-        console.log(`🔍 Kontrak ${contractAddress} terdeteksi sebagai proxy. Memperbarui...`);
+      if (proxyStatus.isProxy) {
+        console.log(`🔍 Kontrak ${contractAddress} terdeteksi sebagai proxy (${proxyStatus.proxyType}) dengan tingkat keyakinan ${proxyStatus.confidence}. Memperbarui...`);
         const updateQuery = `
           UPDATE contracts
-          SET is_proxy = $1, implementation_address = $2, admin_address = $3
+          SET is_proxy = TRUE, 
+              implementation_address = $1, 
+              admin_address = $2,
+              proxy_type = $3
           WHERE address = $4;
         `;
-        const updateValues = [proxyStatus.is_proxy, proxyStatus.implementation_address, proxyStatus.admin_address, contractAddress];
+        const updateValues = [
+          proxyStatus.implementation,
+          proxyStatus.admin,
+          proxyStatus.proxyType,
+          contractAddress
+        ];
         await client.query(updateQuery, updateValues);
         console.log(`✅ Info proxy untuk ${contractAddress} diperbarui.`);
       }

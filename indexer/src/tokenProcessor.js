@@ -1,13 +1,12 @@
 // File: indexer/src/tokenProcessor.js
 
-import { processTransactionLog, detectProxyPattern, processApprovalLog } from './processors/tokenMain.js';
+import { processTransactionLog, processApprovalLog } from './processors/tokenMain.js';
 import { getProcessingStats, resetProcessingStats } from './processors/tokenStats.js';
 import { clearTokenCache, getCacheStats } from './processors/tokenCache.js';
 import { TOKEN_EVENT_SIGNATURES } from './processors/tokenConstants.js';
 
 export {
   processTransactionLog,
-  detectProxyPattern,
   processApprovalLog,
   getProcessingStats,
   resetProcessingStats,
@@ -18,7 +17,6 @@ export {
 
 export default {
   processTransactionLog,
-  detectProxyPattern,
   processApprovalLog,
   getProcessingStats,
   resetProcessingStats,
