@@ -10,19 +10,22 @@ import { getTransferType } from "./tokenUtils.js";
  */
 export async function processERC20Transfer(log, blockTimestamp, tokenInfo, client, logId) {
   try {
+    console.log(`[TOKEN-ERC20] Memproses transfer ERC20 untuk log ${logId}`);
     const parsedLog = tokenInterfaces.erc20.parseLog(log);
     if (!parsedLog) {
-      throw new Error("Failed to parse ERC20 Transfer event");
+      throw new Error("Gagal mem-parse event Transfer ERC20");
     }
 
     const { from, to, value } = parsedLog.args;
+    console.log(`[TOKEN-ERC20] Transfer dari ${from} ke ${to} sejumlah ${value.toString()}`);
 
     // Validate addresses
     if (!ethers.isAddress(from) || !ethers.isAddress(to)) {
-      throw new Error(`Invalid addresses - from: ${from}, to: ${to}`);
+      throw new Error(`Alamat tidak valid - dari: ${from}, ke: ${to}`);
     }
 
     const humanReadableAmount = ethers.formatUnits(value, tokenInfo.decimals || 18);
+    console.log(`[TOKEN-ERC20] Jumlah yang dapat dibaca manusia: ${humanReadableAmount} ${tokenInfo.symbol}`);
 
     const transferData = {
       tx_hash: log.transactionHash,
@@ -37,6 +40,7 @@ export async function processERC20Transfer(log, blockTimestamp, tokenInfo, clien
     };
 
     await saveTokenTransfer(client, transferData);
+    console.log(`[TOKEN-DB] Transfer ERC20 untuk ${logId} berhasil disimpan`);
 
     return {
       success: true,
@@ -47,7 +51,7 @@ export async function processERC20Transfer(log, blockTimestamp, tokenInfo, clien
       transferType: getTransferType(from, to),
     };
   } catch (error) {
-    console.error(`💥 [TOKEN-ERC20] Error processing ERC20 transfer for ${logId}: ${error.message}`);
+    console.error(`💥 [TOKEN-ERC20] Error memproses transfer ERC20 untuk ${logId}: ${error.message}`);
     return { success: false, error: error.message };
   }
 }
@@ -57,24 +61,28 @@ export async function processERC20Transfer(log, blockTimestamp, tokenInfo, clien
  */
 export async function processERC721Transfer(log, blockTimestamp, tokenInfo, client, logId, provider) {
   try {
+    console.log(`[TOKEN-ERC721] Memproses transfer ERC721 untuk log ${logId}`);
     const parsedLog = tokenInterfaces.erc721.parseLog(log);
     if (!parsedLog) {
-      throw new Error("Failed to parse ERC721 Transfer event");
+      throw new Error("Gagal mem-parse event Transfer ERC721");
     }
 
     const { from, to, tokenId } = parsedLog.args;
+    console.log(`[TOKEN-ERC721] Transfer tokenId ${tokenId.toString()} dari ${from} ke ${to}`);
 
     if (!ethers.isAddress(from) || !ethers.isAddress(to)) {
-      throw new Error(`Invalid addresses - from: ${from}, to: ${to}`);
+      throw new Error(`Alamat tidak valid - dari: ${from}, ke: ${to}`);
     }
 
     // Try to get token URI if possible (optional, might fail)
     let tokenUri = null;
     try {
+      console.log(`[TOKEN-ERC721] Mencoba mengambil tokenURI untuk tokenId ${tokenId.toString()}`);
       const contract = new ethers.Contract(log.address, tokenInterfaces.erc721, provider);
       tokenUri = await contract.tokenURI(tokenId);
+      console.log(`[TOKEN-ERC721] Berhasil mengambil tokenURI: ${tokenUri}`);
     } catch (uriError) {
-      // console.warn(`⚠️  [TOKEN-ERC721] Could not fetch tokenURI: ${uriError.message}`);
+      console.warn(`⚠️  [TOKEN-ERC721] Tidak dapat mengambil tokenURI: ${uriError.message}`);
     }
 
     const transferData = {
@@ -90,6 +98,7 @@ export async function processERC721Transfer(log, blockTimestamp, tokenInfo, clie
     };
 
     await saveTokenTransfer(client, transferData);
+    console.log(`[TOKEN-DB] Transfer ERC721 untuk ${logId} berhasil disimpan`);
 
     return {
       success: true,
@@ -100,7 +109,7 @@ export async function processERC721Transfer(log, blockTimestamp, tokenInfo, clie
       transferType: getTransferType(from, to),
     };
   } catch (error) {
-    console.error(`💥 [TOKEN-ERC721] Error processing ERC721 transfer for ${logId}: ${error.message}`);
+    console.error(`💥 [TOKEN-ERC721] Error memproses transfer ERC721 untuk ${logId}: ${error.message}`);
     return { success: false, error: error.message };
   }
 }
@@ -115,20 +124,24 @@ export async function processERC1155Transfer(log, blockTimestamp, tokenInfo, cli
     let isBatch = false;
 
     if (eventTopic === TOKEN_EVENT_SIGNATURES.ERC1155_TRANSFER_SINGLE) {
+      console.log(`[TOKEN-ERC1155] Memproses event TransferSingle untuk ${logId}`);
       parsedLog = tokenInterfaces.erc1155.parseLog(log);
     } else if (eventTopic === TOKEN_EVENT_SIGNATURES.ERC1155_TRANSFER_BATCH) {
+      console.log(`[TOKEN-ERC1155] Memproses event TransferBatch untuk ${logId}`);
       parsedLog = tokenInterfaces.erc1155.parseLog(log);
       isBatch = true;
     } else {
-      throw new Error("Unknown ERC1155 transfer event");
+      throw new Error("Event transfer ERC1155 tidak dikenal");
     }
 
     if (!parsedLog) {
-      throw new Error("Failed to parse ERC1155 Transfer event");
+      throw new Error("Gagal mem-parse event Transfer ERC1155");
     }
 
     if (isBatch) {
       const { operator, from, to, ids, values } = parsedLog.args;
+      console.log(`[TOKEN-ERC1155-BATCH] Operator: ${operator}, Dari: ${from}, Ke: ${to}`);
+      console.log(`[TOKEN-ERC1155-BATCH] Mentransfer ${ids.length} token dalam satu batch`);
       const transferType = getTransferType(from, to);
       const transfers = [];
 
@@ -146,8 +159,10 @@ export async function processERC1155Transfer(log, blockTimestamp, tokenInfo, cli
         };
         await saveTokenTransfer(client, transferData);
         transfers.push({ tokenId: ids[i].toString(), value: values[i].toString() });
+        console.log(`[TOKEN-ERC1155-BATCH] Disimpan: tokenId ${ids[i].toString()}, value ${values[i].toString()}`);
       }
 
+      console.log(`[TOKEN-DB] Transfer batch ERC1155 untuk ${logId} berhasil disimpan`);
       return {
         success: true,
         operator,
@@ -159,6 +174,8 @@ export async function processERC1155Transfer(log, blockTimestamp, tokenInfo, cli
       };
     } else {
       const { operator, from, to, id, value } = parsedLog.args;
+      console.log(`[TOKEN-ERC1155-SINGLE] Operator: ${operator}, Dari: ${from}, Ke: ${to}`);
+      console.log(`[TOKEN-ERC1155-SINGLE] Transfer tokenId ${id.toString()} sejumlah ${value.toString()}`);
 
       const transferData = {
         tx_hash: log.transactionHash,
@@ -173,6 +190,7 @@ export async function processERC1155Transfer(log, blockTimestamp, tokenInfo, cli
       };
 
       await saveTokenTransfer(client, transferData);
+      console.log(`[TOKEN-DB] Transfer tunggal ERC1155 untuk ${logId} berhasil disimpan`);
 
       return {
         success: true,
@@ -186,7 +204,7 @@ export async function processERC1155Transfer(log, blockTimestamp, tokenInfo, cli
       };
     }
   } catch (error) {
-    console.error(`💥 [TOKEN-ERC1155] Error processing ERC1155 transfer for ${logId}: ${error.message}`);
+    console.error(`💥 [TOKEN-ERC1155] Error memproses transfer ERC1155 untuk ${logId}: ${error.message}`);
     return { success: false, error: error.message };
   }
 }

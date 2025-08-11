@@ -74,7 +74,8 @@ function extractAddressFromStorage(storageValue) {
     // Alamat berada di 20 byte terakhir (40 karakter hex terakhir)
     const addressHex = "0x" + storageValue.slice(-40);
     return ethers.getAddress(addressHex);
-  } catch {
+  } catch (e) {
+    console.error(`[PROXY-DEBUG] Gagal mengekstrak alamat dari nilai storage: ${storageValue}`, e);
     return null;
   }
 }
@@ -111,8 +112,10 @@ function isZeroAddress(address) {
  */
 export async function detectProxyContract(contractAddress, provider, options = {}) {
   const { checkLegacySlots = true, checkBytecodePatterns = true, checkBeaconProxy = true, timeout = 10000, retries = 2 } = options;
+  console.log(`[PROXY-DEBUG] Memulai deteksi proxy untuk ${contractAddress} dengan opsi:`, options);
 
   if (!ethers.isAddress(contractAddress)) {
+    console.error(`[PROXY-ERROR] Alamat kontrak tidak valid: ${contractAddress}`);
     throw new Error(`Invalid contract address: ${contractAddress}`);
   }
 
@@ -134,19 +137,23 @@ export async function detectProxyContract(contractAddress, provider, options = {
     };
 
     // 1. Cek EIP-1967 Implementation Slot
+    console.log(`[PROXY-DEBUG] 1. Memeriksa slot implementasi EIP-1967 untuk ${contractAddress}`);
     const implementationResult = await withTimeout(checkEIP1967ImplementationSlot(contractAddress, provider), timeout);
 
     if (implementationResult.found) {
       Object.assign(result, implementationResult);
       result.details.push("EIP-1967 implementation slot detected");
+      console.log(`[PROXY-DEBUG] Ditemukan implementasi EIP-1967: ${implementationResult.implementation}`);
     }
 
     // 2. Cek EIP-1967 Admin Slot
+    console.log(`[PROXY-DEBUG] 2. Memeriksa slot admin EIP-1967 untuk ${contractAddress}`);
     const adminResult = await withTimeout(checkEIP1967AdminSlot(contractAddress, provider), timeout);
 
     if (adminResult.found) {
       result.admin = adminResult.admin;
       result.details.push("EIP-1967 admin slot detected");
+      console.log(`[PROXY-DEBUG] Ditemukan admin EIP-1967: ${adminResult.admin}`);
       if (!result.isProxy) {
         result.isProxy = true;
         result.proxyType = "eip1967-admin-only";
@@ -156,13 +163,16 @@ export async function detectProxyContract(contractAddress, provider, options = {
 
     // 3. Cek Beacon Proxy jika diminta
     if (checkBeaconProxy) {
+      console.log(`[PROXY-DEBUG] 3. Memeriksa slot beacon EIP-1967 untuk ${contractAddress}`);
       const beaconResult = await withTimeout(checkEIP1967BeaconSlot(contractAddress, provider), timeout);
 
       if (beaconResult.found) {
         result.beacon = beaconResult.beacon;
         result.details.push("EIP-1967 beacon slot detected");
+        console.log(`[PROXY-DEBUG] Ditemukan beacon EIP-1967: ${beaconResult.beacon}`);
 
         // Cek implementation dari beacon
+        console.log(`[PROXY-DEBUG] Mengambil implementasi dari beacon ${beaconResult.beacon}`);
         const beaconImpl = await withTimeout(getBeaconImplementation(beaconResult.beacon, provider), timeout);
 
         if (beaconImpl) {
@@ -171,15 +181,18 @@ export async function detectProxyContract(contractAddress, provider, options = {
           result.proxyType = "beacon";
           result.confidence = "high";
           result.details.push("Beacon implementation resolved");
+          console.log(`[PROXY-DEBUG] Implementasi beacon ditemukan: ${beaconImpl}`);
         }
       }
     }
 
     // 4. Cek Legacy Slots jika diminta
     if (checkLegacySlots) {
+      console.log(`[PROXY-DEBUG] 4. Memeriksa slot proxy legacy untuk ${contractAddress}`);
       const legacyResult = await withTimeout(checkLegacySlots(contractAddress, provider), timeout);
 
       if (legacyResult.found) {
+        console.log(`[PROXY-DEBUG] Ditemukan implementasi proxy legacy: ${legacyResult.implementation}`);
         if (!result.isProxy) {
           Object.assign(result, legacyResult);
           result.details.push("Legacy proxy slots detected");
@@ -191,9 +204,11 @@ export async function detectProxyContract(contractAddress, provider, options = {
 
     // 5. Analisis Bytecode jika diminta
     if (checkBytecodePatterns) {
+      console.log(`[PROXY-DEBUG] 5. Menganalisis pola bytecode untuk ${contractAddress}`);
       const bytecodeResult = await withTimeout(analyzeBytecodePatterns(contractAddress, provider), timeout);
 
       if (bytecodeResult.found) {
+        console.log(`[PROXY-DEBUG] Ditemukan pola bytecode: ${bytecodeResult.patternName}`);
         if (!result.isProxy) {
           Object.assign(result, bytecodeResult);
           result.details.push(`Bytecode pattern: ${bytecodeResult.patternName}`);
@@ -209,43 +224,53 @@ export async function detectProxyContract(contractAddress, provider, options = {
 
     // 6. Validasi Implementation Address
     if (result.implementation) {
+      console.log(`[PROXY-DEBUG] 6. Memvalidasi alamat implementasi: ${result.implementation}`);
       const implValidation = await withTimeout(validateImplementation(result.implementation, provider), timeout);
 
       if (!implValidation.valid) {
         result.warnings.push(`Implementation validation: ${implValidation.reason}`);
+        console.warn(`[PROXY-WARN] Validasi implementasi gagal untuk ${result.implementation}: ${implValidation.reason}`);
         if (result.confidence === "high") {
           result.confidence = "medium";
         }
       } else {
         result.details.push("Implementation address validated");
+        console.log(`[PROXY-DEBUG] Alamat implementasi ${result.implementation} tervalidasi.`);
       }
     }
 
     // 7. Deteksi UUPS Pattern
     if (result.isProxy && result.implementation) {
+      console.log(`[PROXY-DEBUG] 7. Memeriksa pola UUPS pada implementasi ${result.implementation}`);
       const uupsCheck = await withTimeout(checkUUPSPattern(result.implementation, provider), timeout);
 
       if (uupsCheck.isUUPS) {
         result.proxyType = result.proxyType === "eip1967" ? "uups" : result.proxyType;
         result.details.push("UUPS upgrade pattern detected");
+        console.log(`[PROXY-DEBUG] Pola UUPS terdeteksi.`);
       }
     }
   } catch (error) {
+    console.error(`[PROXY-ERROR] Terjadi kesalahan saat deteksi proxy untuk ${contractAddress}: ${error.message}`);
     result.warnings.push(`Detection error: ${error.message}`);
 
     // Fallback: coba deteksi sederhana
     try {
+      console.log(`[PROXY-DEBUG] Menjalankan deteksi fallback untuk ${contractAddress}`);
       const fallbackResult = await basicProxyDetection(contractAddress, provider);
       if (fallbackResult.isProxy) {
         Object.assign(result, fallbackResult);
         result.details.push("Fallback detection used");
         result.warnings.push("Primary detection failed, using fallback");
+        console.log(`[PROXY-DEBUG] Deteksi fallback berhasil.`);
       }
     } catch (fallbackError) {
+      console.error(`[PROXY-ERROR] Deteksi fallback gagal untuk ${contractAddress}: ${fallbackError.message}`);
       result.warnings.push(`Fallback detection failed: ${fallbackError.message}`);
     }
   }
 
+  console.log(`[PROXY-DEBUG] Hasil akhir deteksi untuk ${contractAddress}:`, result);
   return result;
 }
 
@@ -262,6 +287,7 @@ async function checkEIP1967ImplementationSlot(contractAddress, provider) {
     const implementation = extractAddressFromStorage(storageValue);
 
     if (implementation && !isZeroAddress(implementation)) {
+      console.log(`[PROXY-DEBUG] Ditemukan implementasi di slot EIP-1967 untuk ${contractAddress}: ${implementation}`);
       return {
         found: true,
         isProxy: true,
@@ -271,6 +297,7 @@ async function checkEIP1967ImplementationSlot(contractAddress, provider) {
       };
     }
   } catch (error) {
+    console.error(`[PROXY-ERROR] Gagal memeriksa slot implementasi untuk ${contractAddress}: ${error.message}`);
     throw new Error(`Failed to check implementation slot: ${error.message}`);
   }
 
@@ -286,9 +313,11 @@ async function checkEIP1967AdminSlot(contractAddress, provider) {
     const admin = extractAddressFromStorage(storageValue);
 
     if (admin && !isZeroAddress(admin)) {
+      console.log(`[PROXY-DEBUG] Ditemukan admin di slot EIP-1967 untuk ${contractAddress}: ${admin}`);
       return { found: true, admin };
     }
   } catch (error) {
+    console.error(`[PROXY-ERROR] Gagal memeriksa slot admin untuk ${contractAddress}: ${error.message}`);
     throw new Error(`Failed to check admin slot: ${error.message}`);
   }
 
@@ -304,9 +333,11 @@ async function checkEIP1967BeaconSlot(contractAddress, provider) {
     const beacon = extractAddressFromStorage(storageValue);
 
     if (beacon && !isZeroAddress(beacon)) {
+      console.log(`[PROXY-DEBUG] Ditemukan beacon di slot EIP-1967 untuk ${contractAddress}: ${beacon}`);
       return { found: true, beacon };
     }
   } catch (error) {
+    console.error(`[PROXY-ERROR] Gagal memeriksa slot beacon untuk ${contractAddress}: ${error.message}`);
     throw new Error(`Failed to check beacon slot: ${error.message}`);
   }
 
@@ -318,6 +349,7 @@ async function checkEIP1967BeaconSlot(contractAddress, provider) {
  */
 async function getBeaconImplementation(beaconAddress, provider) {
   try {
+    console.log(`[PROXY-DEBUG] Memanggil fungsi implementation() pada beacon ${beaconAddress}`);
     // Beacon contract harus memiliki function implementation() -> address
     const beaconInterface = new ethers.Interface(["function implementation() view returns (address)"]);
 
@@ -328,8 +360,10 @@ async function getBeaconImplementation(beaconAddress, provider) {
     });
 
     const decodedResult = beaconInterface.decodeFunctionResult("implementation", result);
+    console.log(`[PROXY-DEBUG] Implementasi dari beacon ${beaconAddress} adalah ${decodedResult[0]}`);
     return decodedResult[0];
   } catch (error) {
+    console.error(`[PROXY-ERROR] Gagal mendapatkan implementasi dari beacon ${beaconAddress}: ${error.message}`);
     return null;
   }
 }
@@ -346,6 +380,7 @@ async function checkLegacySlots(contractAddress, provider) {
       const implementation = extractAddressFromStorage(storageValue);
 
       if (implementation && !isZeroAddress(implementation)) {
+        console.log(`[PROXY-DEBUG] Ditemukan implementasi di slot legacy ${slot} untuk ${contractAddress}: ${implementation}`);
         return {
           found: true,
           isProxy: true,
@@ -355,6 +390,7 @@ async function checkLegacySlots(contractAddress, provider) {
         };
       }
     } catch (error) {
+      console.warn(`[PROXY-WARN] Gagal memeriksa slot legacy ${slot} untuk ${contractAddress}: ${error.message}`);
       continue;
     }
   }
@@ -370,6 +406,7 @@ async function analyzeBytecodePatterns(contractAddress, provider) {
     const bytecode = await provider.getCode(contractAddress);
 
     if (!bytecode || bytecode === "0x") {
+      console.log(`[PROXY-DEBUG] Tidak ada bytecode untuk ${contractAddress}`);
       return { found: false };
     }
 
@@ -378,6 +415,7 @@ async function analyzeBytecodePatterns(contractAddress, provider) {
       const match = bytecode.match(pattern.pattern);
 
       if (match) {
+        console.log(`[PROXY-DEBUG] Bytecode untuk ${contractAddress} cocok dengan pola ${pattern.name}`);
         const result = {
           found: true,
           isProxy: true,
@@ -389,6 +427,7 @@ async function analyzeBytecodePatterns(contractAddress, provider) {
         // Extract implementation jika ada
         if (match[1]) {
           result.implementation = ethers.getAddress(`0x${match[1]}`);
+          console.log(`[PROXY-DEBUG] Implementasi diekstrak dari bytecode: ${result.implementation}`);
         }
 
         return result;
@@ -397,6 +436,7 @@ async function analyzeBytecodePatterns(contractAddress, provider) {
 
     // Cek pola delegatecall umum
     if (containsDelegateCall(bytecode)) {
+      console.log(`[PROXY-DEBUG] Bytecode untuk ${contractAddress} mengandung DELEGATECALL umum`);
       return {
         found: true,
         isProxy: true,
@@ -406,6 +446,7 @@ async function analyzeBytecodePatterns(contractAddress, provider) {
       };
     }
   } catch (error) {
+    console.error(`[PROXY-ERROR] Gagal menganalisis bytecode untuk ${contractAddress}: ${error.message}`);
     throw new Error(`Failed to analyze bytecode: ${error.message}`);
   }
 
@@ -418,16 +459,19 @@ async function analyzeBytecodePatterns(contractAddress, provider) {
 async function validateImplementation(implementationAddress, provider) {
   try {
     if (isZeroAddress(implementationAddress)) {
+      console.warn(`[PROXY-WARN] Alamat implementasi adalah zero address.`);
       return { valid: false, reason: "Zero address" };
     }
 
     const code = await provider.getCode(implementationAddress);
     if (!code || code === "0x") {
+      console.warn(`[PROXY-WARN] Tidak ada kode di alamat implementasi ${implementationAddress}`);
       return { valid: false, reason: "No code at implementation address" };
     }
 
     return { valid: true };
   } catch (error) {
+    console.error(`[PROXY-ERROR] Gagal memvalidasi implementasi ${implementationAddress}: ${error.message}`);
     return { valid: false, reason: error.message };
   }
 }
@@ -437,6 +481,7 @@ async function validateImplementation(implementationAddress, provider) {
  */
 async function checkUUPSPattern(implementationAddress, provider) {
   try {
+    console.log(`[PROXY-DEBUG] Memeriksa proxiableUUID() pada implementasi ${implementationAddress}`);
     // UUPS implementation harus memiliki function proxiableUUID() -> bytes32
     const uupsInterface = new ethers.Interface(["function proxiableUUID() view returns (bytes32)"]);
 
@@ -448,13 +493,17 @@ async function checkUUPSPattern(implementationAddress, provider) {
 
     const decodedResult = uupsInterface.decodeFunctionResult("proxiableUUID", result);
     const uuid = decodedResult[0];
+    console.log(`[PROXY-DEBUG] UUID yang ditemukan: ${uuid}`);
 
     // UUID harus sama dengan EIP-1967 implementation slot
+    const isUUPS = uuid === EIP1967_SLOTS.IMPLEMENTATION;
+    console.log(`[PROXY-DEBUG] Apakah ini UUPS? ${isUUPS}`);
     return {
-      isUUPS: uuid === EIP1967_SLOTS.IMPLEMENTATION,
+      isUUPS,
       uuid,
     };
   } catch (error) {
+    console.log(`[PROXY-DEBUG] Gagal memeriksa pola UUPS untuk ${implementationAddress} (kemungkinan bukan UUPS): ${error.message}`);
     return { isUUPS: false };
   }
 }
@@ -472,6 +521,7 @@ async function basicProxyDetection(contractAddress, provider) {
 
     // Cek keberadaan DELEGATECALL
     if (containsDelegateCall(bytecode)) {
+      console.log(`[PROXY-DEBUG] Deteksi fallback: Ditemukan DELEGATECALL di ${contractAddress}`);
       return {
         isProxy: true,
         proxyType: "unknown",
@@ -481,6 +531,7 @@ async function basicProxyDetection(contractAddress, provider) {
 
     return { found: false };
   } catch (error) {
+    console.error(`[PROXY-ERROR] Gagal saat deteksi fallback untuk ${contractAddress}: ${error.message}`);
     return { found: false };
   }
 }
@@ -496,9 +547,11 @@ async function basicProxyDetection(contractAddress, provider) {
  * @returns {Promise<object>} - Informasi lengkap proxy
  */
 export async function getProxyInfo(contractAddress, provider) {
+  console.log(`[PROXY-DEBUG] Mendapatkan info proxy lengkap untuk ${contractAddress}`);
   const detection = await detectProxyContract(contractAddress, provider);
 
   if (!detection.isProxy) {
+    console.log(`[PROXY-DEBUG] ${contractAddress} bukan proxy.`);
     return detection;
   }
 
@@ -508,23 +561,28 @@ export async function getProxyInfo(contractAddress, provider) {
   try {
     // Cek owner/admin jika ada
     if (info.admin) {
+      console.log(`[PROXY-DEBUG] Mendapatkan info untuk admin: ${info.admin}`);
       info.adminInfo = await getAddressInfo(info.admin, provider);
     }
 
     // Cek implementation jika ada
     if (info.implementation) {
+      console.log(`[PROXY-DEBUG] Mendapatkan info untuk implementasi: ${info.implementation}`);
       info.implementationInfo = await getAddressInfo(info.implementation, provider);
     }
 
     // Cek beacon jika ada
     if (info.beacon) {
+      console.log(`[PROXY-DEBUG] Mendapatkan info untuk beacon: ${info.beacon}`);
       info.beaconInfo = await getAddressInfo(info.beacon, provider);
     }
   } catch (error) {
     info.warnings = info.warnings || [];
     info.warnings.push(`Failed to get additional info: ${error.message}`);
+    console.error(`[PROXY-ERROR] Gagal mendapatkan info tambahan untuk ${contractAddress}: ${error.message}`);
   }
 
+  console.log(`[PROXY-DEBUG] Info proxy lengkap untuk ${contractAddress}:`, info);
   return info;
 }
 
@@ -533,15 +591,19 @@ export async function getProxyInfo(contractAddress, provider) {
  */
 async function getAddressInfo(address, provider) {
   try {
+    console.log(`[PROXY-DEBUG] Mendapatkan info untuk alamat: ${address}`);
     const [code, balance] = await Promise.all([provider.getCode(address), provider.getBalance(address)]);
 
-    return {
+    const addressInfo = {
       address,
       hasCode: code && code !== "0x",
       codeSize: code ? (code.length - 2) / 2 : 0,
       balance: ethers.formatEther(balance),
     };
+    console.log(`[PROXY-DEBUG] Info untuk ${address}:`, addressInfo);
+    return addressInfo;
   } catch (error) {
+    console.error(`[PROXY-ERROR] Gagal mendapatkan info untuk alamat ${address}: ${error.message}`);
     return {
       address,
       error: error.message,
@@ -559,14 +621,17 @@ async function getAddressInfo(address, provider) {
 export async function batchDetectProxy(addresses, provider, options = {}) {
   const { concurrency = 5 } = options;
   const results = [];
+  console.log(`[PROXY-DEBUG] Memulai deteksi batch untuk ${addresses.length} alamat dengan konkurensi ${concurrency}`);
 
   // Process in batches to avoid overwhelming the provider
   for (let i = 0; i < addresses.length; i += concurrency) {
     const batch = addresses.slice(i, i + concurrency);
+    console.log(`[PROXY-DEBUG] Memproses batch ${i / concurrency + 1}: ${batch.join(", ")}`);
     const batchPromises = batch.map(async (address) => {
       try {
         return await detectProxyContract(address, provider, options);
       } catch (error) {
+        console.error(`[PROXY-ERROR] Deteksi batch gagal untuk ${address}: ${error.message}`);
         return {
           isProxy: false,
           error: error.message,
@@ -579,5 +644,6 @@ export async function batchDetectProxy(addresses, provider, options = {}) {
     results.push(...batchResults);
   }
 
+  console.log(`[PROXY-DEBUG] Deteksi batch selesai. Total hasil: ${results.length}`);
   return results;
 }

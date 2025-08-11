@@ -22,15 +22,15 @@ export async function processTransactionLog(log, blockTimestamp, provider, exist
   processingStats.totalLogs++;
 
   try {
-    console.log(`🔍 [TOKEN-DEBUG] Processing log ${logId}`);
-    console.log(`    📍 Contract: ${log.address}`);
-    console.log(`    📦 Block: ${log.blockNumber} (${new Date(blockTimestamp * 1000).toISOString()})`);
-    console.log(`    🔗 Tx: ${log.transactionHash}`);
-    console.log(`    📋 Topics: ${log.topics?.length || 0} topics`);
+    console.log(`🔍 [TOKEN-MAIN] Memulai pemrosesan log ${logId}`);
+    console.log(`    - Kontrak: ${log.address}`);
+    console.log(`    - Blok: ${log.blockNumber} (${new Date(blockTimestamp * 1000).toISOString()})`);
+    console.log(`    - Tx: ${log.transactionHash}`);
+    console.log(`    - Topik: ${log.topics?.length || 0} topik`);
 
     // Validate log structure
     if (!log.topics || log.topics.length === 0) {
-      console.warn(`⚠️  [TOKEN-WARN] Log ${logId} has no topics, skipping`);
+      console.warn(`⚠️  [TOKEN-WARN] Log ${logId} tidak memiliki topik, dilewati`);
       return { success: false, reason: "no_topics" };
     }
 
@@ -38,11 +38,11 @@ export async function processTransactionLog(log, blockTimestamp, provider, exist
     const tokenStandard = detectTokenStandard(log);
 
     if (!tokenStandard) {
-      console.log(`ℹ️  [TOKEN-INFO] Log ${logId} is not a recognized token event, skipping`);
+      console.log(`ℹ️  [TOKEN-INFO] Log ${logId} bukan event token yang dikenali, dilewati`);
       return { success: false, reason: "not_token_event" };
     }
 
-    console.log(`✅ [TOKEN-SUCCESS] Detected ${tokenStandard} event at ${log.address}`);
+    console.log(`✅ [TOKEN-DETECT] Terdeteksi event ${tokenStandard} di ${log.address}`);
 
     const client = existingClient || (await getDbPool().connect());
     let ownTransaction = !existingClient;
@@ -50,23 +50,24 @@ export async function processTransactionLog(log, blockTimestamp, provider, exist
     try {
       if (ownTransaction) {
         await client.query("BEGIN");
-        console.log(`📊 [TOKEN-DB] Started transaction for ${logId}`);
+        console.log(`[TOKEN-DB] Memulai transaksi untuk ${logId}`);
       }
 
       // Check if we already processed this log
       const existingRecord = await client.query("SELECT 1 FROM token_transfers WHERE tx_hash = $1 AND log_index = $2 LIMIT 1", [log.transactionHash, log.logIndex || 0]);
 
       if (existingRecord.rowCount > 0) {
-        console.log(`⏭️  [TOKEN-SKIP] Log ${logId} already processed, skipping`);
+        console.log(`⏭️  [TOKEN-SKIP] Log ${logId} sudah diproses, dilewati`);
         if (ownTransaction) await client.query("ROLLBACK");
         return { success: true, reason: "already_processed" };
       }
 
       // Get or fetch token metadata
+      console.log(`[TOKEN-MAIN] Mendapatkan metadata untuk token ${log.address}`);
       const tokenInfo = await getOrFetchTokenMetadata(log.address, provider, client, tokenStandard);
 
       if (!tokenInfo) {
-        console.warn(`⚠️  [TOKEN-WARN] Could not get token metadata for ${log.address}, skipping transfer processing`);
+        console.warn(`⚠️  [TOKEN-WARN] Tidak bisa mendapatkan metadata token untuk ${log.address}, pemrosesan transfer dilewati`);
         if (ownTransaction) await client.query("ROLLBACK");
         return { success: false, reason: "no_token_metadata" };
       }
@@ -75,6 +76,7 @@ export async function processTransactionLog(log, blockTimestamp, provider, exist
 
       // Process transfer based on token standard
       let transferResult;
+      console.log(`[TOKEN-MAIN] Memproses transfer ${tokenStandard}`);
       switch (tokenStandard) {
         case "ERC20":
           transferResult = await processERC20Transfer(log, blockTimestamp, tokenInfo, client, logId);
@@ -97,16 +99,16 @@ export async function processTransactionLog(log, blockTimestamp, provider, exist
 
       if (ownTransaction) {
         await client.query("COMMIT");
-        console.log(`💾 [TOKEN-DB] Transaction committed for ${logId}`);
+        console.log(`[TOKEN-DB] Transaksi di-commit untuk ${logId}`);
       }
 
       const processingTime = Date.now() - startTime;
 
-      console.log(`🎉 [TOKEN-SUCCESS] Successfully processed ${tokenStandard} transfer in ${processingTime}ms`);
-      console.log(`    🪙 Token: ${tokenInfo.symbol} (${tokenInfo.name})`);
-      console.log(`    📊 Amount: ${transferResult.humanReadableAmount || "N/A"}`);
-      console.log(`    👤 From: ${transferResult.from}`);
-      console.log(`    👤 To: ${transferResult.to}`);
+      console.log(`🎉 [TOKEN-SUCCESS] Berhasil memproses transfer ${tokenStandard} dalam ${processingTime}ms`);
+      console.log(`    - Token: ${tokenInfo.symbol} (${tokenInfo.name})`);
+      console.log(`    - Jumlah: ${transferResult.humanReadableAmount || "N/A"}`);
+      console.log(`    - Dari: ${transferResult.from}`);
+      console.log(`    - Ke: ${transferResult.to}`);
 
       return {
         success: true,
@@ -118,24 +120,24 @@ export async function processTransactionLog(log, blockTimestamp, provider, exist
     } catch (dbError) {
       if (ownTransaction) {
         await client.query("ROLLBACK");
-        console.log(`🔄 [TOKEN-DB] Transaction rolled back for ${logId}`);
+        console.error(`[TOKEN-DB] Transaksi di-rollback untuk ${logId} karena: ${dbError.message}`);
       }
       throw dbError;
     } finally {
       if (ownTransaction) {
         client.release();
-        console.log(`🔌 [TOKEN-DB] Database connection released for ${logId}`);
+        console.log(`[TOKEN-DB] Koneksi database dilepaskan untuk ${logId}`);
       }
     }
   } catch (error) {
     processingStats.errors++;
     const processingTime = Date.now() - startTime;
 
-    console.error(`💥 [TOKEN-ERROR] Failed to process log ${logId} in ${processingTime}ms:`);
-    console.error(`    📍 Contract: ${log.address}`);
-    console.error(`    🔗 Tx: ${log.transactionHash}`);
-    console.error(`    ❌ Error: ${error.message}`);
-    console.error(`    📚 Stack: ${error.stack}`);
+    console.error(`💥 [TOKEN-ERROR] Gagal memproses log ${logId} dalam ${processingTime}ms:`);
+    console.error(`    - Kontrak: ${log.address}`);
+    console.error(`    - Tx: ${log.transactionHash}`);
+    console.error(`    - Error: ${error.message}`);
+    console.error(`    - Stack: ${error.stack}`);
 
     // Re-throw if using external transaction so parent can handle
     if (existingClient) {
@@ -159,20 +161,21 @@ export async function processApprovalLog(log, blockTimestamp, provider, existing
     return { success: false, reason: "not_approval_event" };
   }
 
+  const logId = `${log.transactionHash}-${log.logIndex || 0}`;
   try {
-    console.log(`👥 [TOKEN-APPROVAL] Processing approval event: ${log.transactionHash}`);
+    console.log(`[TOKEN-APPROVAL] Memproses event approval: ${logId}`);
 
     const parsedLog = tokenInterfaces.erc20.parseLog(log);
     if (!parsedLog) {
-      throw new Error("Failed to parse Approval event");
+      throw new Error("Gagal mem-parse event Approval");
     }
 
     const { owner, spender, value } = parsedLog.args;
 
-    console.log(`👥 [TOKEN-APPROVAL] Approval details:`);
-    console.log(`    Owner: ${owner}`);
-    console.log(`    Spender: ${spender}`);
-    console.log(`    Value: ${value.toString()}`);
+    console.log(`[TOKEN-APPROVAL] Detail approval:`);
+    console.log(`    - Owner: ${owner}`);
+    console.log(`    - Spender: ${spender}`);
+    console.log(`    - Value: ${value.toString()}`);
 
     // You can save approval data to track DeFi interactions
     // await saveTokenApproval(client, approvalData);
@@ -184,7 +187,7 @@ export async function processApprovalLog(log, blockTimestamp, provider, existing
       value: value.toString(),
     };
   } catch (error) {
-    console.error(`💥 [TOKEN-APPROVAL] Error processing approval: ${error.message}`);
+    console.error(`💥 [TOKEN-APPROVAL] Error memproses approval ${logId}: ${error.message}`);
     return { success: false, error: error.message };
   }
 }

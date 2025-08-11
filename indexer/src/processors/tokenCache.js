@@ -10,13 +10,14 @@ const CACHE_TTL = 1000 * 60 * 30; // 30 minutes
 export function clearTokenCache() {
   const cacheSize = tokenMetadataCache.size;
   tokenMetadataCache.clear();
-  console.log(`🧹 [TOKEN-CACHE] Cleared ${cacheSize} cached token metadata entries`);
+  console.log(`🧹 [TOKEN-CACHE] Membersihkan ${cacheSize} entri cache metadata token`);
 }
 
 /**
  * Get cache statistics
  */
 export function getCacheStats() {
+  console.log("[TOKEN-CACHE] Mengambil statistik cache...");
   const now = Date.now();
   let expired = 0;
   let valid = 0;
@@ -29,12 +30,14 @@ export function getCacheStats() {
     }
   }
 
-  return {
+  const stats = {
     totalEntries: tokenMetadataCache.size,
     validEntries: valid,
     expiredEntries: expired,
     cacheTtl: CACHE_TTL,
   };
+  console.log("[TOKEN-CACHE] Statistik cache saat ini:", stats);
+  return stats;
 }
 
 export { tokenMetadataCache, CACHE_TTL };

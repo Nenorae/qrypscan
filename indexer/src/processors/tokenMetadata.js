@@ -18,33 +18,37 @@ export async function getOrFetchTokenMetadata(contractAddress, provider, client,
 
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
       processingStats.cacheHits++;
-      console.log(`💾 [TOKEN-CACHE] Cache hit for ${contractAddress} (${tokenStandard})`);
+      console.log(`[TOKEN-CACHE] Cache hit untuk ${contractAddress} (${tokenStandard})`);
       return cached.data;
     }
+    console.log(`[TOKEN-CACHE] Cache miss untuk ${contractAddress} (${tokenStandard})`);
 
     // Check database
+    console.log(`[TOKEN-DB] Memeriksa database untuk token ${contractAddress}`);
     const dbResult = await client.query("SELECT * FROM tokens WHERE contract_address = $1", [contractAddress]);
 
     if (dbResult.rowCount > 0) {
       const tokenInfo = dbResult.rows[0];
-      console.log(`📁 [TOKEN-DB] Found existing token in database: ${tokenInfo.symbol}`);
+      console.log(`[TOKEN-DB] Ditemukan token yang ada di database: ${tokenInfo.symbol}`);
 
       // Cache the result
       tokenMetadataCache.set(cacheKey, {
         data: tokenInfo,
         timestamp: Date.now(),
       });
+      console.log(`[TOKEN-CACHE] Menyimpan data token ${tokenInfo.symbol} ke cache`);
 
       return tokenInfo;
     }
 
     // Fetch from blockchain
-    console.log(`🌐 [TOKEN-FETCH] Fetching metadata for new ${tokenStandard} token: ${contractAddress}`);
+    console.log(`[TOKEN-FETCH] Mengambil metadata untuk token ${tokenStandard} baru: ${contractAddress}`);
 
     const tokenInfo = await fetchTokenMetadata(contractAddress, provider, tokenStandard);
 
     if (tokenInfo) {
       // Save to database
+      console.log(`[TOKEN-DB] Menyimpan info token baru ke database: ${tokenInfo.symbol}`);
       await saveTokenInfo(client, contractAddress, tokenInfo);
       processingStats.newTokensDiscovered++;
 
@@ -53,13 +57,14 @@ export async function getOrFetchTokenMetadata(contractAddress, provider, client,
         data: tokenInfo,
         timestamp: Date.now(),
       });
+      console.log(`[TOKEN-CACHE] Menyimpan data token baru ${tokenInfo.symbol} ke cache`);
 
-      console.log(`✅ [TOKEN-NEW] New token discovered: ${tokenInfo.symbol} (${tokenInfo.name})`);
+      console.log(`✅ [TOKEN-NEW] Token baru ditemukan: ${tokenInfo.symbol} (${tokenInfo.name})`);
     }
 
     return tokenInfo;
   } catch (error) {
-    console.error(`💥 [TOKEN-METADATA] Error getting token metadata for ${contractAddress}:`, error.message);
+    console.error(`💥 [TOKEN-METADATA] Error mendapatkan metadata token untuk ${contractAddress}:`, error.message);
     return null;
   }
 }
@@ -70,7 +75,7 @@ export async function getOrFetchTokenMetadata(contractAddress, provider, client,
 export async function fetchTokenMetadata(contractAddress, provider, tokenStandard, maxRetries = 3) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`🔄 [TOKEN-FETCH] Attempt ${attempt}/${maxRetries} for ${contractAddress}`);
+      console.log(`[TOKEN-FETCH] Percobaan ${attempt}/${maxRetries} untuk ${contractAddress}`);
 
       let tokenInfo = {
         contract_address: contractAddress,
@@ -82,6 +87,7 @@ export async function fetchTokenMetadata(contractAddress, provider, tokenStandar
         const contract = new ethers.Contract(contractAddress, tokenStandard === "ERC20" ? erc20Abi : tokenInterfaces.erc721, provider);
 
         // Use Promise.allSettled to handle partial failures
+        console.log(`[TOKEN-FETCH] Memanggil name(), symbol(), decimals(), totalSupply() untuk ${contractAddress}`);
         const results = await Promise.allSettled([contract.name(), contract.symbol(), tokenStandard === "ERC20" ? contract.decimals() : Promise.resolve(0), contract.totalSupply().catch(() => BigInt(0))]);
 
         tokenInfo.name = results[0].status === "fulfilled" ? results[0].value : `Unknown Token`;
@@ -89,10 +95,11 @@ export async function fetchTokenMetadata(contractAddress, provider, tokenStandar
         tokenInfo.decimals = results[2].status === "fulfilled" ? Number(results[2].value) : tokenStandard === "ERC20" ? 18 : 0;
         tokenInfo.total_supply = results[3].status === "fulfilled" ? results[3].value.toString() : "0";
 
-        console.log(`📋 [TOKEN-FETCH] Metadata fetched: ${tokenInfo.symbol} (${tokenInfo.name})`);
-        console.log(`    📊 Type: ${tokenStandard}, Decimals: ${tokenInfo.decimals}, Supply: ${tokenInfo.total_supply}`);
+        console.log(`[TOKEN-FETCH] Metadata yang diambil: ${tokenInfo.symbol} (${tokenInfo.name})`);
+        console.log(`    - Tipe: ${tokenStandard}, Desimal: ${tokenInfo.decimals}, Pasokan: ${tokenInfo.total_supply}`);
       } else if (tokenStandard === "ERC1155") {
         // ERC1155 tokens don't have standard metadata methods
+        console.log(`[TOKEN-FETCH] Menggunakan metadata default untuk token ERC1155 ${contractAddress}`);
         tokenInfo.name = "ERC1155 Token";
         tokenInfo.symbol = "ERC1155";
         tokenInfo.decimals = 0;
@@ -101,10 +108,10 @@ export async function fetchTokenMetadata(contractAddress, provider, tokenStandar
 
       return tokenInfo;
     } catch (error) {
-      console.warn(`⚠️  [TOKEN-FETCH] Attempt ${attempt} failed for ${contractAddress}: ${error.message}`);
+      console.warn(`⚠️  [TOKEN-FETCH] Percobaan ${attempt} gagal untuk ${contractAddress}: ${error.message}`);
 
       if (attempt === maxRetries) {
-        console.error(`💥 [TOKEN-FETCH] All attempts failed for ${contractAddress}`);
+        console.error(`💥 [TOKEN-FETCH] Semua percobaan gagal untuk ${contractAddress}`);
         // Return minimal info so we can still process transfers
         return {
           contract_address: contractAddress,
@@ -119,7 +126,9 @@ export async function fetchTokenMetadata(contractAddress, provider, tokenStandar
       }
 
       // Exponential backoff
-      await new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+      const delay = Math.pow(2, attempt) * 1000;
+      console.log(`[TOKEN-FETCH] Menunggu ${delay}ms sebelum mencoba lagi...`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
 }
