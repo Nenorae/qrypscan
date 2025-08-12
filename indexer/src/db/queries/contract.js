@@ -1,5 +1,5 @@
 // File: indexer/src/db/queries/contract.js
-import { detectProxyContract } from "../../processors/proxyDetection.js";
+import { detectProxyContract } from "../../processors/proxyDetection/index.js";
 
 // ======================== CONTRACT FUNCTIONS ========================
 export async function saveContract(client, receipt, tx, blockTimestamp, provider) {
