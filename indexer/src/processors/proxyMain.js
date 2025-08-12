@@ -8,8 +8,9 @@ import {
   storeDiamondCut,
   updateBeaconProxyInfo
 } from "../db/queries/index.js";
-import { IMPLEMENTATION_SLOT, ADMIN_SLOT, PROXY_EVENT_SIGNATURES, proxyInterfaces } from "./proxyConstants.js";
+import { PROXY_EVENT_SIGNATURES, proxyInterfaces } from "./proxyConstants.js";
 import { processingStats } from "./proxyStats.js";
+import { ProxyAdminTransactionDecoder } from './proxyDecoder.js';
 
 // Minimal ABI to get implementation from a beacon contract
 const beaconAbi = ["function implementation() view returns (address)"];
@@ -68,7 +69,7 @@ export async function processProxyUpgradeLog(log, blockTimestamp, provider, exis
       console.log(`[PROXY-MAIN] Memproses log sebagai tipe ${proxyType}`);
       switch (proxyType) {
         case "upgradeable":
-          processingResult = await processUpgradeableProxy(log, blockTimestamp, client);
+          processingResult = await processUpgradeableProxy(log, blockTimestamp, client, provider);
           break;
         case "diamond":
           processingResult = await processDiamondProxy(log, blockTimestamp, client);
@@ -140,98 +141,98 @@ function detectProxyType(eventTopic) {
   }
 }
 
-async function processUpgradeableProxy(log, blockTimestamp, client) {
-  console.log(`[PROXY-UPGRADEABLE] Memproses event Upgraded untuk ${log.address}`);
+async function processUpgradeableProxy(log, blockTimestamp, client, provider) {
+  console.log(`[PROXY-UPGRADEABLE] Memproses event Upgraded dari tx: ${log.transactionHash}`);
   const parsedLog = proxyInterfaces.upgradeable.parseLog(log);
   if (!parsedLog) throw new Error("Gagal mem-parse event Upgraded");
 
-  const { implementation } = parsedLog.args;
-  console.log(`[PROXY-UPGRADEABLE] Alamat implementasi baru: ${implementation}`);
-  if (!ethers.isAddress(implementation)) throw new Error(`Alamat implementasi tidak valid: ${implementation}`);
+  const { implementation: newImplementation } = parsedLog.args;
+  console.log(`[PROXY-UPGRADEABLE] Alamat implementasi baru dari event: ${newImplementation}`);
+  if (!ethers.isAddress(newImplementation)) throw new Error(`Alamat implementasi tidak valid: ${newImplementation}`);
 
-  // 1. Update the current state in the `contracts` table
-  console.log(`[PROXY-UPGRADEABLE] Memperbarui implementasi proxy di tabel kontrak`);
-  await updateContractProxyImplementation(client, log.address, implementation);
+  let proxyAddress = log.address; // Default to log address (for UUPS)
+  let upgradeType = 'UUPS';
 
-  // 2. Record the historical upgrade event
-  console.log(`[PROXY-UPGRADEABLE] Merekam histori upgrade`);
-  await recordProxyUpgrade(client, {
-    proxyAddress: log.address,
-    implementationAddress: implementation,
-    proxyType: 'Upgradeable',
-    txHash: log.transactionHash,
-    blockNumber: log.blockNumber,
-    blockTimestamp: new Date(blockTimestamp * 1000),
-  });
+  // Coba decode transaksi untuk menemukan proxy address jika event berasal dari ProxyAdmin
+  console.log(`[PROXY-UPGRADEABLE] Mencoba mendekode transaksi untuk menemukan alamat proxy yang sebenarnya...`);
+  try {
+    const decoder = new ProxyAdminTransactionDecoder(provider);
+    const decodedTx = await decoder.decodeUpgradeTransaction(log.transactionHash);
+    
+    console.log('[PROXY-DECODE] Hasil dekode transaksi lengkap:', decodedTx);
 
-  console.log(`[PROXY-UPGRADEABLE] Berhasil diproses untuk ${log.address}`);
-  return { success: true, data: { newImplementation: implementation } };
-}
-
-async function processDiamondProxy(log, blockTimestamp, client) {
-  console.log(`[PROXY-DIAMOND] Memproses event DiamondCut untuk ${log.address}`);
-  const parsedLog = proxyInterfaces.diamond.parseLog(log);
-  if (!parsedLog) throw new Error("Gagal mem-parse event DiamondCut");
-
-  const { _diamondCut } = parsedLog.args;
-  const blockTime = new Date(blockTimestamp * 1000);
-  console.log(`[PROXY-DIAMOND] Ditemukan ${_diamondCut.length} operasi facet`);
-
-  for (const [index, cut] of _diamondCut.entries()) {
-    console.log(`[PROXY-DIAMOND] Memproses cut ${index + 1}/${_diamondCut.length}: Aksi=${cut.action}, Facet=${cut.facetAddress}`);
-    for (const selector of cut.functionSelectors) {
-      await storeDiamondCut(client, {
-        proxyAddress: log.address,
-        facetAddress: cut.facetAddress,
-        action: cut.action, // 0=Add, 1=Replace, 2=Remove
-        functionSelectors: [selector],
-        txHash: log.transactionHash,
-        blockNumber: log.blockNumber,
-        blockTimestamp: blockTime,
-      });
+    if (decodedTx && decodedTx.proxyAddress && ethers.isAddress(decodedTx.proxyAddress)) {
+        // Jika berhasil di-decode dan ada proxyAddress, berarti ini dari ProxyAdmin
+        proxyAddress = decodedTx.proxyAddress;
+        upgradeType = `Transparent (${decodedTx.functionName})`;
+        console.log(`[PROXY-DECODE] SUKSES: Ditemukan alamat proxy via dekode transaksi: ${proxyAddress}`);
+    } else {
+        console.log(`[PROXY-DECODE] INFO: Dekoder tidak menemukan alamat proxy. Mengasumsikan pola UUPS dimana event emitter adalah proxy: ${proxyAddress}`);
+        if(decodedTx.error) {
+            console.log(`[PROXY-DECODE] Alasan dari dekoder: ${decodedTx.error}`);
+        }
     }
+  } catch (e) {
+      console.warn(`[PROXY-DECODE] GAGAL: Terjadi error saat dekode transaksi. Kembali ke pola UUPS. Error: ${e.message}`);
   }
 
-  console.log(`[PROXY-DIAMOND] Berhasil diproses untuk ${log.address}`);
-  return { success: true, data: { facetOperations: _diamondCut.length } };
-}
+  // 1. Update the current state in the `contracts` table
+  console.log(`[PROXY-UPGRADEABLE] Memperbarui implementasi untuk proxy ${proxyAddress} ke ${newImplementation}`);
+  await updateContractProxyImplementation(client, proxyAddress, newImplementation);
 
-async function processBeaconProxy(log, blockTimestamp, client, provider) {
-  console.log(`[PROXY-BEACON] Memproses event BeaconUpgraded untuk ${log.address}`);
-  const parsedLog = proxyInterfaces.beacon.parseLog(log);
-  if (!parsedLog) throw new Error("Gagal mem-parse event BeaconUpgraded");
-
-  const { beacon } = parsedLog.args;
-  console.log(`[PROXY-BEACON] Alamat beacon: ${beacon}`);
-  if (!ethers.isAddress(beacon)) throw new Error(`Alamat beacon tidak valid: ${beacon}`);
-
-  // A beacon upgrade points to the beacon, not the implementation.
-  // We need to call the beacon contract to find the actual implementation address.
-  console.log(`[PROXY-BEACON] Mengambil implementasi dari kontrak beacon ${beacon}`);
-  const beaconContract = new ethers.Contract(beacon, beaconAbi, provider);
-  const implementation = await beaconContract.implementation();
-  console.log(`[PROXY-BEACON] Alamat implementasi yang ditemukan: ${implementation}`);
-  if (!ethers.isAddress(implementation)) throw new Error(`Beacon di ${beacon} mengembalikan alamat implementasi yang tidak valid: ${implementation}`);
-
-  // 1. Update the proxy's current implementation in the `contracts` table
-  console.log(`[PROXY-BEACON] Memperbarui implementasi proxy di tabel kontrak`);
-  await updateContractProxyImplementation(client, log.address, implementation);
-  
-  // 2. Store the relationship between this proxy and its beacon
-  console.log(`[PROXY-BEACON] Memperbarui info beacon untuk proxy`);
-  await updateBeaconProxyInfo(client, log.address, beacon);
-
-  // 3. Record the historical upgrade event
-  console.log(`[PROXY-BEACON] Merekam histori upgrade`);
+  // 2. Record the historical upgrade event
+  console.log(`[PROXY-UPGRADEABLE] Merekam histori upgrade untuk proxy ${proxyAddress}`);
   await recordProxyUpgrade(client, {
-    proxyAddress: log.address,
-    implementationAddress: implementation,
-    proxyType: 'Beacon',
+    proxyAddress: proxyAddress,
+    implementationAddress: newImplementation,
+    proxyType: upgradeType,
     txHash: log.transactionHash,
     blockNumber: log.blockNumber,
     blockTimestamp: new Date(blockTimestamp * 1000),
   });
 
-  console.log(`[PROXY-BEACON] Berhasil diproses untuk ${log.address}`);
-  return { success: true, data: { newImplementation: implementation, beaconAddress: beacon } };
+  console.log(`[PROXY-UPGRADEABLE] Berhasil diproses untuk proxy ${proxyAddress}`);
+  return { success: true, data: { proxyAddress, newImplementation } };
+}
+
+/**
+ * Scans a transaction to see if it's a direct proxy upgrade call without corresponding logs.
+ * @param {object} tx - The transaction object from the provider
+ * @param {number} blockTimestamp - The timestamp of the block.
+ * @param {ethers.Provider} provider - The Ethers provider.
+ * @param {object} client - The database client
+ */
+export async function processPossibleProxyUpgradeTransaction(tx, blockTimestamp, provider, client) {
+  // We only care about transactions that are contract interactions with input data
+  if (!tx.to || !tx.data || tx.data === '0x') {
+    return { success: false, reason: 'not_contract_interaction' };
+  }
+  
+  console.log(`[PROXY-TX-SCAN] Memindai transaksi ${tx.hash} untuk kemungkinan upgrade proxy...`);
+  const decoder = new ProxyAdminTransactionDecoder(provider);
+  const decodedTx = await decoder.decodeUpgradeTransaction(tx.hash);
+
+  // Check if the decoder successfully found a proxy upgrade pattern
+  if (decodedTx && decodedTx.proxyAddress && decodedTx.newImplementation) {
+    console.log(`[PROXY-TX-SCAN] Ditemukan upgrade proxy via scan transaksi: ${decodedTx.proxyAddress} -> ${decodedTx.newImplementation}`);
+    const upgradeType = `Transparent (${decodedTx.functionName})`;
+
+    // 1. Update contract state
+    await updateContractProxyImplementation(client, decodedTx.proxyAddress, decodedTx.newImplementation);
+
+    // 2. Record historical upgrade
+    await recordProxyUpgrade(client, {
+      proxyAddress: decodedTx.proxyAddress,
+      implementationAddress: decodedTx.newImplementation,
+      proxyType: upgradeType,
+      txHash: tx.hash,
+      blockNumber: tx.blockNumber,
+      blockTimestamp: new Date(blockTimestamp * 1000),
+    });
+
+    console.log(`[PROXY-TX-SCAN] Berhasil merekam upgrade dari scan transaksi untuk proxy ${decodedTx.proxyAddress}`);
+    return { success: true, proxyAddress: decodedTx.proxyAddress };
+  }
+
+  return { success: false, reason: 'not_proxy_upgrade_transaction' };
 }

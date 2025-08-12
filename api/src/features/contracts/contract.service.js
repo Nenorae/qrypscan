@@ -29,7 +29,7 @@ export async function getContractByAddress(address) {
     creatorAddress: contractData.creator_address,
     creationTxHash: contractData.creation_tx_hash,
     isVerified: contractData.is_verified,
-    sourceFiles: contractData.sourceFiles, // Langsung dari model
+    sourceFiles: contractData.sourceFiles,
     contractName: contractData.contract_name,
     compilerVersion: contractData.compiler_version,
     abi: contractData.abi,
@@ -37,8 +37,11 @@ export async function getContractByAddress(address) {
     runs: contractData.runs,
     constructorArguments: contractData.constructor_arguments,
     evmVersion: contractData.evm_version,
-    isProxy: !!contractData.implementation_address,
+    // Data proxy yang sudah disesuaikan
+    isProxy: contractData.is_proxy, // Menggunakan flag langsung dari DB
+    proxyType: contractData.proxy_type,
     implementationAddress: contractData.implementation_address,
+    adminAddress: contractData.admin_address,
   };
 
   console.log('[API Service] Mapped data for GraphQL:', mappedData);
@@ -67,6 +70,25 @@ export async function getContracts() {
     evmVersion: contractData.evm_version,
     isProxy: !!contractData.implementation_address,
     implementationAddress: contractData.implementation_address,
+  }));
+}
+
+/**
+ * Mengambil riwayat upgrade untuk sebuah kontrak proxy.
+ * @param {string} address Alamat proxy.
+ * @returns {Promise<object[]>}
+ */
+export async function getProxyUpgradeHistory(address) {
+  console.log(`[API Service] Fetching proxy upgrade history for address: ${address}`);
+  const history = await contractModel.getProxyUpgradeHistory(address);
+  
+  // Map snake_case from DB to camelCase for GraphQL
+  return history.map(record => ({
+    implementationAddress: record.implementation_address,
+    proxyType: record.proxy_type,
+    txHash: record.tx_hash,
+    blockNumber: record.block_number,
+    blockTimestamp: record.block_timestamp.toISOString(), // Pastikan formatnya string ISO
   }));
 }
 

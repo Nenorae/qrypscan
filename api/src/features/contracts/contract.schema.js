@@ -46,9 +46,18 @@ export default gql`
     implementationAddress: String!
   }
 
+  type ProxyUpgrade {
+    implementationAddress: String!
+    proxyType: String
+    txHash: String!
+    blockNumber: Int!
+    blockTimestamp: String!
+  }
+
   extend type Query {
     contract(address: String!): Contract
     contracts: [Contract]
+    proxyUpgradeHistory(address: String!): [ProxyUpgrade]
   }
 
   type Mutation {

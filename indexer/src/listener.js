@@ -4,7 +4,7 @@ import { ethers } from "ethers";
 import { getDbPool } from "./db/connect.js";
 import { processBlock, saveContract } from "./db/queries/index.js";
 import { processTransactionLog } from "./tokenProcessor.js";
-import { processProxyUpgradeLog } from "./proxyProcessor.js"; // Import proxy processor
+import { processProxyUpgradeLog, processPossibleProxyUpgradeTransaction } from "./proxyProcessor.js";
 
 export async function startListener() {
   const BESU_WS_URL = process.env.BESU_WS_URL;
@@ -36,6 +36,7 @@ export async function startListener() {
           // 2. Process receipts and logs for each transaction
           for (const tx of blockWithTxs.prefetchedTransactions) {
             const receipt = await provider.getTransactionReceipt(tx.hash);
+            let upgradeFoundInLogs = false;
             if (receipt) {
               // Check for contract creation
               if (tx.to === null && receipt.contractAddress) {
@@ -47,8 +48,15 @@ export async function startListener() {
                 for (const log of receipt.logs) {
                   // Pass the DB client to ensure all log processing is in the same transaction
                   await processTransactionLog(log, blockWithTxs.timestamp, provider, client);
-                  await processProxyUpgradeLog(log, blockWithTxs.timestamp, provider, client);
+                  const result = await processProxyUpgradeLog(log, blockWithTxs.timestamp, provider, client);
+                  if (result && result.success) {
+                    upgradeFoundInLogs = true;
+                  }
                 }
+              }
+              // New fallback logic: If no upgrade was found in logs, try decoding the transaction directly
+              if (!upgradeFoundInLogs) {
+                await processPossibleProxyUpgradeTransaction(tx, blockWithTxs.timestamp, provider, client);
               }
             }
           }

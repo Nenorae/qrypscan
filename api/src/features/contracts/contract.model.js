@@ -2,83 +2,97 @@
 import pool from "../../core/db.js";
 
 /**
- * Mengambil data kontrak dari database. Jika kontrak adalah proxy, data
- * verifikasi (seperti ABI dan source code) akan diambil dari kontrak implementasi.
- * @param {string} address Alamat kontrak.
- * @returns {Promise<object|null>}
+ * Mengambil data kontrak dari database secara cerdas.
+ * - Mengambil data dasar dari tabel `contracts`.
+ * - Jika kontrak adalah proxy, ia akan mengambil detail verifikasi (ABI, source code, dll.)
+ *   dari alamat implementasinya di tabel `verified_contracts`.
+ * - Jika bukan proxy, ia akan mengambil detail verifikasi dari alamatnya sendiri.
+ * @param {string} address Alamat kontrak yang dicari.
+ * @returns {Promise<object|null>} Objek kontrak yang digabungkan atau null jika tidak ditemukan.
  */
 export async function getContractByAddress(address) {
   const client = await pool.connect();
   try {
-    // Langkah 1 & 2: Ambil data dasar & cek apakah ini proxy
-    const initialQuery = `
+    // Langkah 1: Ambil data dasar dan info proxy dari tabel `contracts`
+    const contractQuery = `
       SELECT 
-        c.address, c.creator_address, c.creation_tx_hash,
-        vc.implementation_address
-      FROM contracts c
-      LEFT JOIN verified_contracts vc ON c.address = vc.address
-      WHERE c.address = $1;
-    `;
-    const initialRes = await client.query(initialQuery, [address]);
-    if (initialRes.rows.length === 0) return null;
-
-    const baseData = initialRes.rows[0];
-    const implementationAddress = baseData.implementation_address;
-    const isProxy = !!implementationAddress;
-
-    // Langkah 3: Jika bukan proxy, ambil detail verifikasinya sendiri
-    if (!isProxy) {
-      const verificationQuery = `
-        SELECT *, (SELECT json_agg(json_build_object('filePath', file_path, 'sourceCode', source_code)) FROM contract_source_files WHERE contract_address = $1) as "sourceFiles"
-        FROM verified_contracts 
-        WHERE address = $1;
-      `;
-      const verificationRes = await client.query(verificationQuery, [address]);
-      const verificationData = verificationRes.rows[0] || {};
-      
-      return {
-        ...baseData,
-        ...verificationData,
-        is_verified: !!verificationData.address,
-        isProxy: false,
-        sourceFiles: verificationData.sourceFiles || [],
-      };
-    }
-
-    // Langkah 4: Jika INI ADALAH PROXY, ambil detail dari implementasi
-    console.log(`[DB Model] Proxy terdeteksi: ${address} -> ${implementationAddress}. Mengambil detail dari implementasi.`);
-    const implementationQuery = `
-      SELECT *, (SELECT json_agg(json_build_object('filePath', file_path, 'sourceCode', source_code)) FROM contract_source_files WHERE contract_address = $1) as "sourceFiles"
-      FROM verified_contracts 
+        address, 
+        creator_address, 
+        creation_tx_hash, 
+        is_proxy, 
+        proxy_type, 
+        implementation_address, 
+        admin_address
+      FROM contracts
       WHERE address = $1;
     `;
-    const implementationRes = await client.query(implementationQuery, [implementationAddress]);
-    const implementationData = implementationRes.rows[0] || {};
+    const contractRes = await client.query(contractQuery, [address]);
+    if (contractRes.rows.length === 0) {
+      console.log(`[DB Model] Kontrak ${address} tidak ditemukan di tabel 'contracts'.`);
+      return null;
+    }
 
-    // Langkah 5: Gabungkan hasil
+    const contractData = contractRes.rows[0];
+    
+    // Langkah 2: Tentukan alamat mana yang akan digunakan untuk mencari data verifikasi.
+    // Jika ini adalah proxy, gunakan alamat implementasi. Jika tidak, gunakan alamatnya sendiri.
+    const targetAddressForVerification = contractData.is_proxy && contractData.implementation_address
+      ? contractData.implementation_address
+      : address;
+    
+    console.log(`[DB Model] Mencari detail verifikasi untuk alamat: ${targetAddressForVerification}`);
+
+    // Langkah 3: Ambil detail verifikasi (jika ada) dari `verified_contracts` dan `contract_source_files`
+    const verificationQuery = `
+      SELECT
+        vc.address as verified_address,
+        vc.contract_name,
+        vc.compiler_version,
+        vc.is_verified,
+        vc.verified_at,
+        vc.abi,
+        vc.optimization_used,
+        vc.runs,
+        vc.constructor_arguments,
+        vc.evm_version,
+        (
+          SELECT json_agg(json_build_object('filePath', csf.file_path, 'sourceCode', csf.source_code))
+          FROM contract_source_files csf
+          WHERE csf.contract_address = vc.address
+        ) as "sourceFiles"
+      FROM verified_contracts vc
+      WHERE vc.address = $1;
+    `;
+    const verificationRes = await client.query(verificationQuery, [targetAddressForVerification]);
+    const verificationData = verificationRes.rows[0] || {};
+
+    // Langkah 4: Gabungkan semua data menjadi satu objek respons
     const finalData = {
-      // Data dari proxy
-      address: baseData.address,
-      creator_address: baseData.creator_address,
-      creation_tx_hash: baseData.creation_tx_hash,
+      // Data dasar dari tabel 'contracts'
+      address: contractData.address,
+      creator_address: contractData.creator_address,
+      creation_tx_hash: contractData.creation_tx_hash,
       
-      // Flag khusus proxy
-      isProxy: true,
-      implementation_address: implementationAddress,
+      // Info proxy dari tabel 'contracts'
+      is_proxy: contractData.is_proxy,
+      proxy_type: contractData.proxy_type,
+      implementation_address: contractData.implementation_address,
+      admin_address: contractData.admin_address,
 
-      // Data dari implementasi (menimpa jika ada)
-      is_verified: !!implementationData.address, // Dianggap terverifikasi jika implementasi ada di tabel
-      contract_name: implementationData.contract_name,
-      compiler_version: implementationData.compiler_version,
-      abi: implementationData.abi,
-      optimization_used: implementationData.optimization_used,
-      runs: implementationData.runs,
-      constructor_arguments: implementationData.constructor_arguments,
-      evm_version: implementationData.evm_version,
-      verified_at: implementationData.verified_at,
-      sourceFiles: implementationData.sourceFiles || [],
+      // Detail verifikasi dari 'verified_contracts' (milik implementasi jika proxy)
+      is_verified: !!verificationData.is_verified,
+      contract_name: verificationData.contract_name,
+      compiler_version: verificationData.compiler_version,
+      abi: verificationData.abi,
+      optimization_used: verificationData.optimization_used,
+      runs: verificationData.runs,
+      constructor_arguments: verificationData.constructor_arguments,
+      evm_version: verificationData.evm_version,
+      verified_at: verificationData.verified_at,
+      sourceFiles: verificationData.sourceFiles || [],
     };
 
+    console.log(`[DB Model] Data final yang digabungkan untuk ${address}:`, { ...finalData, abi: '...', sourceFiles: '...' });
     return finalData;
 
   } finally {
@@ -87,7 +101,8 @@ export async function getContractByAddress(address) {
 }
 
 /**
- * Mengambil semua kontrak dari database.
+ * Mengambil daftar kontrak untuk ditampilkan di halaman utama.
+ * Menggabungkan data dari `contracts` dan `verified_contracts`.
  * @returns {Promise<object[]>}
  */
 export async function getContracts() {
@@ -96,44 +111,63 @@ export async function getContracts() {
       c.address,
       c.creator_address,
       c.creation_tx_hash,
-      vc.is_verified,
-      vc.contract_name,
-      vc.compiler_version,
-      vc.optimization_used,
-      vc.runs,
-      vc.constructor_arguments,
-      vc.evm_version,
-      vc.implementation_address
+      c.block_number,
+      c.is_proxy,
+      c.proxy_type,
+      -- Ambil nama dari implementasi jika proxy dan terverifikasi, jika tidak dari verifikasi diri sendiri
+      COALESCE(vc_impl.contract_name, vc_self.contract_name) as contract_name,
+      -- Status verifikasi didasarkan pada apakah implementasi (jika proxy) atau diri sendiri terverifikasi
+      (CASE 
+        WHEN c.is_proxy THEN vc_impl.is_verified 
+        ELSE vc_self.is_verified 
+      END) as is_verified
     FROM contracts c
-    LEFT JOIN verified_contracts vc ON c.address = vc.address
+    LEFT JOIN verified_contracts vc_self ON c.address = vc_self.address AND NOT c.is_proxy
+    LEFT JOIN verified_contracts vc_impl ON c.implementation_address = vc_impl.address AND c.is_proxy
     ORDER BY c.block_number DESC;
   `;
   const res = await pool.query(query);
   return res.rows;
 }
 
+
 /**
- * Menyimpan alamat implementasi untuk sebuah kontrak proxy.
+ * Menetapkan alamat implementasi untuk kontrak proxy.
+ * Ini dipanggil setelah verifikasi manual bahwa sebuah alamat adalah proxy.
  * @param {string} proxyAddress Alamat kontrak proxy.
  * @param {string} implementationAddress Alamat kontrak implementasi.
- * @returns {Promise<void>}
+ * @returns {Promise<object|null>}
  */
-export async function setImplementationAddress(proxyAddress, implementationAddress, details) {
-  const { contract_name, compiler_version } = details;
-  const query = `
-    INSERT INTO verified_contracts (address, implementation_address, contract_name, compiler_version, is_verified, verified_at)
-    VALUES ($1, $2, $3, $4, FALSE, CURRENT_TIMESTAMP)
-    ON CONFLICT (address) DO UPDATE
-    SET implementation_address = $2,
-        -- Hanya perbarui nama & versi jika sebelumnya null (opsional, tapi aman)
-        contract_name = COALESCE(verified_contracts.contract_name, $3),
-        compiler_version = COALESCE(verified_contracts.compiler_version, $4),
-        updated_at = CURRENT_TIMESTAMP;
-  `;
-  await pool.query(query, [proxyAddress, implementationAddress, contract_name, compiler_version]);
-  console.log(`[DB Model] Set/updated implementation for ${proxyAddress} to ${implementationAddress}`);
-}
+export async function setImplementationAddress(proxyAddress, implementationAddress) {
+  const client = await pool.connect();
+  try {
+    // Kita asumsikan 'proxy_type' adalah EIP-1967 karena service yang memanggil
+    // fungsi ini secara spesifik memeriksa slot storage EIP-1967.
+    const query = `
+      UPDATE contracts
+      SET 
+        is_proxy = TRUE,
+        implementation_address = $2,
+        proxy_type = 'EIP-1967' -- Ditentukan oleh logika service
+      WHERE address = $1
+      RETURNING *;
+    `;
+    const res = await client.query(query, [proxyAddress, implementationAddress]);
+    
+    if (res.rows.length === 0) {
+      // Ini bisa terjadi jika proxyAddress tidak ada di tabel 'contracts'.
+      // Seharusnya, indexer sudah memasukkannya. Kita bisa memilih untuk melempar error
+      // atau mencoba INSERT jika tidak ada. Untuk saat ini, kita log sebuah warning.
+      console.warn(`[DB Model] Peringatan: Mencoba mengatur implementasi untuk proxy ${proxyAddress} yang tidak ada di DB.`);
+      return null;
+    }
 
+    console.log(`[DB Model] Berhasil menautkan proxy ${proxyAddress} ke implementasi ${implementationAddress}.`);
+    return res.rows[0];
+  } finally {
+    client.release();
+  }
+}
 
 /**
  * Mencari kontrak di tabel \`contracts\` (tabel umum untuk semua kontrak).
@@ -234,4 +268,25 @@ export async function saveVerifiedContract(contractData, sourceFiles) {
   } finally {
     client.release();
   }
+}
+
+/**
+ * Mengambil riwayat upgrade untuk sebuah kontrak proxy dari tabel `proxy_upgrades`.
+ * @param {string} address Alamat kontrak proxy.
+ * @returns {Promise<object[]>} Array dari event upgrade.
+ */
+export async function getProxyUpgradeHistory(address) {
+  const query = `
+    SELECT 
+      implementation_address,
+      proxy_type,
+      tx_hash,
+      block_number,
+      block_timestamp
+    FROM proxy_upgrades
+    WHERE proxy_address = $1
+    ORDER BY block_number DESC, block_timestamp DESC;
+  `;
+  const res = await pool.query(query, [address]);
+  return res.rows;
 }

@@ -17,6 +17,13 @@ const resolvers = {
     contracts: async () => {
       return contractService.getContracts();
     },
+    /**
+     * Resolver untuk query `proxyUpgradeHistory`.
+     * Mengambil riwayat upgrade sebuah proxy.
+     */
+    proxyUpgradeHistory: async (_, { address }) => {
+      return contractService.getProxyUpgradeHistory(address);
+    },
   },
   Mutation: {
     /**
