@@ -1,7 +1,7 @@
 // File: indexer/src/indexer.js
 
 import { ethers } from "ethers";
-import { getLatestBlockNumber, saveContract, processBlock } from "./db/queries/index.js";
+import { getLatestBlockNumber, saveContract, processBlock, saveRawLog } from "./db/queries/index.js";
 import { getDbPool } from "./db/connect.js";
 import { processTransactionLog } from "./tokenProcessor.js";
 import { processProxyUpgradeLog, processPossibleProxyUpgradeTransaction } from "./proxyProcessor.js"; 
@@ -64,6 +64,9 @@ async function startIndexer() {
               // Process logs for token transfers and proxy upgrades
               if (receipt.logs) {
                 for (const log of receipt.logs) {
+                  // Menyimpan raw log untuk fungsionalitas getLogs
+                  await saveRawLog(client, log, blockWithTxs.timestamp);
+                  
                   await processTransactionLog(log, blockWithTxs.timestamp, provider, client);
                   const result = await processProxyUpgradeLog(log, blockWithTxs.timestamp, provider, client);
                   if (result && result.success) {

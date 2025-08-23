@@ -1,5 +1,6 @@
 // api/src/features/contracts/contract.resolver.js
 import * as contractService from "./contract.service.js";
+import logger from "../../core/logger.js";
 
 const resolvers = {
   Query: {
@@ -8,6 +9,7 @@ const resolvers = {
      * Mengambil detail kontrak dari service.
      */
     contract: async (_, { address }) => {
+      logger.info("[contract.resolver.js] >> Query.contract");
       return contractService.getContractByAddress(address);
     },
     /**
@@ -15,6 +17,7 @@ const resolvers = {
      * Mengambil daftar semua kontrak.
      */
     contracts: async () => {
+      logger.info("[contract.resolver.js] >> Query.contracts");
       return contractService.getContracts();
     },
     /**
@@ -22,6 +25,7 @@ const resolvers = {
      * Mengambil riwayat upgrade sebuah proxy.
      */
     proxyUpgradeHistory: async (_, { address }) => {
+      logger.info("[contract.resolver.js] >> Query.proxyUpgradeHistory");
       return contractService.getProxyUpgradeHistory(address);
     },
   },
@@ -31,6 +35,7 @@ const resolvers = {
      * Meneruskan input ke service untuk diproses.
      */
     verifyContract: async (_, { input }) => {
+      logger.info("[contract.resolver.js] >> Mutation.verifyContract");
       return contractService.verify(input);
     },
 
@@ -39,6 +44,7 @@ const resolvers = {
      * Meneruskan input ke service untuk verifikasi proxy.
      */
     verifyProxy: async (_, { input }) => {
+      logger.info("[contract.resolver.js] >> Mutation.verifyProxy");
       return contractService.verifyProxy(input);
     },
   },

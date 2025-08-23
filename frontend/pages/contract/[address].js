@@ -26,6 +26,8 @@ const GET_CONTRACT = gql`
       evmVersion
       isProxy
       implementationAddress
+      adminAddress
+      blockNumber
     }
   }
 `;

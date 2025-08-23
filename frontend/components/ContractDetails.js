@@ -39,6 +39,71 @@ function ProxyInfoBanner({ implementationAddress }) {
     );
 }
 
+function ContractOverviewCard({ contract }) {
+    const { 
+        creatorAddress, 
+        creationTxHash, 
+        blockNumber, 
+        contractName, 
+        compilerVersion, 
+        optimizationUsed, 
+        runs, 
+        evmVersion, 
+        constructorArguments, 
+        isProxy, 
+        implementationAddress, 
+        adminAddress 
+    } = contract;
+
+    const renderDetail = (label, value, isAddress = false, linkPrefix = '') => {
+        if (!value && value !== 0) return null;
+        return (
+            <div className="flex flex-col sm:flex-row sm:items-center py-2 border-b border-gray-200 dark:border-gray-700 last:border-b-0">
+                <dt className="w-full sm:w-1/4 text-sm font-medium text-gray-500 dark:text-gray-400">{label}:</dt>
+                <dd className="mt-1 sm:mt-0 w-full sm:w-3/4 text-sm text-gray-900 dark:text-gray-100 break-all">
+                    {isAddress ? (
+                        <Link href={`${linkPrefix}${value}`} className="text-blue-600 hover:underline font-mono dark:text-blue-400">
+                            {value}
+                        </Link>
+                    ) : (
+                        value.toString()
+                    )}
+                </dd>
+            </div>
+        );
+    };
+
+    return (
+        <div className="bg-white dark:bg-gray-800 shadow overflow-hidden sm:rounded-lg mb-6">
+            <div className="px-4 py-5 sm:px-6">
+                <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-gray-100">Contract Overview</h3>
+            </div>
+            <div className="border-t border-gray-200 dark:border-gray-700">
+                <dl>
+                    {renderDetail('Contract Name', contractName || '-')}
+                    {renderDetail('Creator Address', creatorAddress, true, '/address/')}
+                    {renderDetail('Creation Tx Hash', creationTxHash, true, '/tx/')}
+                    {renderDetail('Block Number', blockNumber, true, '/block/')}
+                    {renderDetail('Compiler Version', compilerVersion)}
+                    {renderDetail('Optimization Used', optimizationUsed ? 'Yes' : 'No')}
+                    {renderDetail('Runs', runs)}
+                    {renderDetail('EVM Version', evmVersion)}
+                    {renderDetail('Constructor Arguments', constructorArguments || 'None')}
+
+                    {isProxy && (
+                        <>
+                            {renderDetail('Is Proxy', 'Yes')}
+                            {renderDetail('Implementation Address', implementationAddress, true, '/contract/')}
+                            {renderDetail('Admin Address', adminAddress || 'None', true, '/address/')}
+                        </>
+                    )}
+                </dl>
+            </div>
+        </div>
+    );
+}
+
+
 function SourceCodeViewer({ sourceFiles }) {
     const [activeFile, setActiveFile] = useState(0);
     const { theme } = useTheme();
@@ -96,6 +161,8 @@ export function VerifiedInfo({ contract }) {
         </div>
 
         <ProxyInfoBanner implementationAddress={contract.implementationAddress} />
+
+        <ContractOverviewCard contract={contract} />
 
         <div className="flex border-b border-gray-200 dark:border-gray-700">
             {tabs.map((tab) => (

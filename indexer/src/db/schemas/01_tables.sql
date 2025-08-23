@@ -51,6 +51,19 @@ CREATE TABLE IF NOT EXISTS transactions (
     UNIQUE(block_number, transaction_index, block_timestamp)
 );
 
+-- Event Logs Table: Stores raw event logs for generic querying (e.g., eth_getLogs).
+CREATE TABLE IF NOT EXISTS event_logs (
+    tx_hash TEXT NOT NULL,
+    block_number BIGINT NOT NULL,
+    block_timestamp TIMESTAMPTZ NOT NULL,
+    log_index INT NOT NULL,
+    address TEXT NOT NULL,
+    topics TEXT[] NOT NULL, -- Array of topics, e.g., {topic0, topic1, ...}
+    data TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (tx_hash, log_index, block_timestamp)
+);
+
 -- === Contract & Verification Data ===
 
 -- Contracts Table: A central registry for all contract addresses found.
@@ -76,12 +89,11 @@ CREATE TABLE IF NOT EXISTS verified_contracts (
     compiler_version TEXT NOT NULL,
     is_verified BOOLEAN DEFAULT FALSE,
     verified_at TIMESTAMPTZ,
-    abi JSONB,
+    abi jsonb,
     optimization_used BOOLEAN,
     runs INT,
     constructor_arguments TEXT,
     evm_version TEXT,
-    implementation_address TEXT, -- For proxies
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );

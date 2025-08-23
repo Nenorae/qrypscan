@@ -23,6 +23,7 @@ CREATE INDEX IF NOT EXISTS idx_transactions_value ON transactions (value_wei, bl
 -- Contracts indexes
 CREATE INDEX IF NOT EXISTS idx_contracts_creator_address ON contracts (creator_address);
 CREATE INDEX IF NOT EXISTS idx_contracts_block_number ON contracts (block_number);
+CREATE INDEX IF NOT EXISTS idx_contracts_implementation_address ON contracts (implementation_address) WHERE implementation_address IS NOT NULL;
 
 -- Token transfers indexes
 CREATE INDEX IF NOT EXISTS idx_token_transfers_timestamp ON token_transfers (block_timestamp DESC);
@@ -40,7 +41,6 @@ CREATE INDEX IF NOT EXISTS idx_verified_contracts_name ON verified_contracts (co
 CREATE INDEX IF NOT EXISTS idx_verified_contracts_verified_at ON verified_contracts (verified_at DESC);
 CREATE INDEX IF NOT EXISTS idx_verified_contracts_is_verified ON verified_contracts (is_verified);
 CREATE INDEX IF NOT EXISTS idx_verified_contracts_compiler_version ON verified_contracts (compiler_version);
-CREATE INDEX IF NOT EXISTS idx_verified_contracts_implementation_address ON verified_contracts (implementation_address) WHERE implementation_address IS NOT NULL;
 
 -- Contract source files indexes
 CREATE INDEX IF NOT EXISTS idx_contract_source_files_contract_address ON contract_source_files (contract_address);

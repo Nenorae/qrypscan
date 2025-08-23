@@ -1,4 +1,5 @@
 // api/src/features/contracts/bytecode.utils.js
+import logger from "../../core/logger.js";
 
 /**
  * Menghapus hash metadata dari bytecode.
@@ -6,6 +7,7 @@
  * @returns {string} Bytecode yang sudah bersih dari metadata.
  */
 export function stripMetadata(bytecode) {
+  logger.info("[bytecode.utils.js] >> stripMetadata");
   // Pattern untuk metadata Swarm (legacy) dan IPFS (modern)
   const legacyRegex = /a165627a7a72305820\w{64}0029$/;
   const modernRegex = /a2646970667358221220\w{64}64736f6c6343\w{6}0033$/;
@@ -22,6 +24,7 @@ export function stripMetadata(bytecode) {
  * @param {string} label Nama untuk logging (misal: "DEPLOYED" atau "COMPILED").
  */
 export function analyzeBytecode(bytecode, label) {
+  logger.info("[bytecode.utils.js] >> analyzeBytecode");
   console.log(`\n=== ANALISIS BYTECODE ${label.toUpperCase()} ===`);
   console.log(`Panjang total: ${bytecode.length} karakter`);
   console.log(`Panjang dalam bytes: ${bytecode.length / 2} bytes`);
@@ -48,6 +51,7 @@ export function analyzeBytecode(bytecode, label) {
  * @returns {{isIdentical: boolean, isSubset: boolean, cleanedDeployed: string, cleanedRuntime: string}}
  */
 export function compareBytecode(deployedBytecode, runtimeBytecode) {
+  logger.info("[bytecode.utils.js] >> compareBytecode");
   console.log("\n=== PERBANDINGAN BYTECODE DETAIL ===");
 
   const cleanedDeployed = stripMetadata(deployedBytecode.slice(2));
@@ -77,6 +81,7 @@ export function compareBytecode(deployedBytecode, runtimeBytecode) {
  * @param {string} compiled 
  */
 function logDifferences(deployed, compiled) {
+    logger.info("[bytecode.utils.js] >> logDifferences");
     const minLength = Math.min(deployed.length, compiled.length);
     let firstDiff = -1;
 

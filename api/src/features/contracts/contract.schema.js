@@ -23,6 +23,8 @@ export default gql`
     evmVersion: String
     isProxy: Boolean
     implementationAddress: String
+    adminAddress: String
+    blockNumber: Int
   }
 
   type VerificationResult {
