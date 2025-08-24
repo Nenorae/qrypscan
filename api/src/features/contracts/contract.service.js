@@ -27,7 +27,7 @@ export async function getContractByAddress(address) {
 
   // Mapping snake_case dari DB ke camelCase untuk GraphQL
   const mappedData = {
-    address: contractData.address,
+    address: contractData.contract_address,
     creatorAddress: contractData.creator_address,
     creationTxHash: contractData.creation_tx_hash,
     isVerified: contractData.is_verified,
