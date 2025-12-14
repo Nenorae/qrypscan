@@ -1,5 +1,6 @@
 // src/features/transactions/transaction.resolver.js
 import * as transactionModel from "./transaction.model.js";
+import * as transactionService from "./transaction.service.js";
 
 export const resolvers = {
   Query: {
@@ -21,6 +22,9 @@ export const resolvers = {
       ]);
       return { transactions, totalCount };
     },
+    async transactionsByContractAddress(_, { address, limit, offset }) {
+      return transactionService.getTransactionsByContractAddress(address, limit, offset);
+    },
   },
   Transaction: {
     // Mapping nama kolom DB ke nama field di skema GraphQL
@@ -34,5 +38,17 @@ export const resolvers = {
     gasPrice: (parent) => parent.gas_price,
     transactionIndex: (parent) => parent.transaction_index,
     inputData: (parent) => parent.input_data,
+  },
+  TokenTransfer: {
+    // Mapping nama kolom DB ke nama field di skema GraphQL untuk TokenTransfer
+    txHash: (parent) => parent.tx_hash,
+    logIndex: (parent) => parent.log_index,
+    blockNumber: (parent) => parent.block_number,
+    blockTimestamp: (parent) => parent.block_timestamp,
+    contractAddress: (parent) => parent.contract_address,
+    fromAddress: (parent) => parent.from_address,
+    toAddress: (parent) => parent.to_address,
+    value: (parent) => parent.value,
+    tokenId: (parent) => parent.token_id,
   },
 };

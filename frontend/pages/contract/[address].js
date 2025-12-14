@@ -32,7 +32,6 @@ const GET_CONTRACT = gql`
   }
 `;
 
-
 export default function ContractPage({ contract, address }) {
     // Jika kontrak tidak ditemukan di database sama sekali
     if (!contract) {
@@ -50,8 +49,6 @@ export default function ContractPage({ contract, address }) {
         )
     }
 
-    const isVerified = contract.isVerified;
-
     return (
         <div className="font-sans p-4 md:p-8 max-w-7xl mx-auto bg-gray-50 text-gray-900 min-h-screen dark:bg-gray-900 dark:text-gray-100">
             <Head>
@@ -64,7 +61,7 @@ export default function ContractPage({ contract, address }) {
             </header>
 
             <main>
-                {isVerified ? <VerifiedInfo contract={contract} /> : <UnverifiedInfo contract={contract} />}
+              {contract.isVerified ? <VerifiedInfo contract={contract} /> : <UnverifiedInfo contract={contract} />}
             </main>
         </div>
     );

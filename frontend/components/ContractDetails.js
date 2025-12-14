@@ -9,6 +9,7 @@ import { useTheme } from '../context/ThemeContext';
 import { ethers } from 'ethers';
 import { useRouter } from 'next/router';
 import ContractInteractor from './ContractInteractor';
+import TransactionList from './TransactionList'; // <-- IMPORT TAMBAHAN
 
 const VERIFY_PROXY_MUTATION = gql`
   mutation VerifyProxy($input: VerifyProxyInput!) {
@@ -95,8 +96,7 @@ function ContractOverviewCard({ contract }) {
                             {renderDetail('Is Proxy', 'Yes')}
                             {renderDetail('Implementation Address', implementationAddress, true, '/contract/')}
                             {renderDetail('Admin Address', adminAddress || 'None', true, '/address/')}
-                        </>
-                    )}
+                        </>                    )}
                 </dl>
             </div>
         </div>
@@ -148,7 +148,11 @@ function SourceCodeViewer({ sourceFiles }) {
 export function VerifiedInfo({ contract }) {
     const [activeTab, setActiveTab] = useState('contract');
 
-    const tabs = [{ id: 'contract', label: 'Contract' }];
+    const tabs = [
+        { id: 'contract', label: 'Contract' },
+        { id: 'transactions', label: 'Transactions' } // <-- TAB BARU
+    ];
+
     if (contract.abi) {
         tabs.push({ id: 'read', label: contract.isProxy ? 'Read as Proxy' : 'Read Contract' });
         tabs.push({ id: 'write', label: contract.isProxy ? 'Write as Proxy' : 'Write Contract' });
@@ -185,6 +189,9 @@ export function VerifiedInfo({ contract }) {
                 <div className="space-y-4">
                     <SourceCodeViewer sourceFiles={contract.sourceFiles} />
                 </div>
+            )}
+            {activeTab === 'transactions' && (
+                <TransactionList contractAddress={contract.address} />
             )}
             {activeTab === 'read' && (
                 <ContractInteractor abi={contract.abi} address={contract.address} type="read" />
