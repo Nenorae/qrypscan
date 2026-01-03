@@ -235,6 +235,10 @@ export async function startServer() {
     })
   );
 
+  // Serve static token image assets
+  app.use('/images', express.static(path.resolve(__dirname, '../tokenAsset/image')));
+  logger.info(`Serving static images from ${path.resolve(__dirname, '../tokenAsset/image')} at /images`);
+
   // Apply request logging to all routes
   app.use(requestLogger);
 
