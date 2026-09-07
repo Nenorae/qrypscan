@@ -8,7 +8,7 @@ type TokenAsset {
   symbol: String
   decimals: Int
   tokenType: String
-  logo: String # URL ke aset gambar
+  logoUrl: String # URL ke aset gambar
 }
 
 extend type Query {

@@ -56,7 +56,7 @@ export async function getTokenAssetInfo(address) {
       symbol: tokenInfo.symbol,
       decimals: tokenInfo.decimals,
       tokenType: tokenInfo.tokenType,
-      logo: imageUrl,
+      logoUrl: imageUrl,
     };
   } catch (error) {
     logger.error(`[token.service.js] Gagal mendapatkan info aset token untuk ${address}:`, error);
